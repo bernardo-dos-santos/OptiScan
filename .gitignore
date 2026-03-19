@@ -2,3 +2,8 @@
 __pycache__/
 venv/
 *.db
+.env
+# Ignorar imagens de teste e dados de clientes
+*.jpg
+*.jpeg
+*.png
