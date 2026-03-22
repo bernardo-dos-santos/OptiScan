@@ -8,7 +8,7 @@ from functools import wraps
 from dotenv import load_dotenv
 
 
-from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook
+from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
 from services.leitor import analisar_imagem
 from services.sheets import atualizar_sheets
 
@@ -37,7 +37,7 @@ def validate_twilio_request(f):
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath("chave_nova.json")
 
 @app.route("/whatsapp", methods=['POST'])
-@validate_twilio_request
+# @validate_twilio_request
 def whatsapp():
     # Pega os dados brutos e limpa
     numero_usuario = request.values.get('From', '').replace('whatsapp:', '')
@@ -55,7 +55,6 @@ def whatsapp():
             zap_novo = partes[2]
             planilha_nova = partes[3]
             
-            from services.banco import admin_cadastrar_cliente
             novo_id = admin_cadastrar_cliente(nome_empresa, zap_novo, planilha_nova)
             
             res = MessagingResponse()
