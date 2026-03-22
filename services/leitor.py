@@ -9,7 +9,7 @@ def analisar_imagem(url_imagem):
     O Cérebro do Optilog: Baixa a imagem do WhatsApp e pede pro Gemini extrair os dados.
     """
     try:
-        # 1. Baixar a imagem enviada pelo Twilio
+      
         sid = os.getenv('TWILIO_ACCOUNT_SID')
         token = os.getenv('TWILIO_AUTH_TOKEN')
         resposta = requests.get(url_imagem, auth=(sid, token))
@@ -25,16 +25,15 @@ def analisar_imagem(url_imagem):
         
         # O Prompt Universal (Depois dinamizar isso por cliente)
         prompt = """
-        Você é um assistente de logística. Analise esta imagem e extraia os dados do produto para o estoque.
-        REGRAS CRÍTICAS DE MATEMÁTICA (PADRÃO BRASILEIRO):
-        - Na etiqueta, o ponto indica milhar (Ex: 4.000 significa QUATRO MIL). Retorne como número inteiro sem ponto (ex: 4000).
-        - Se houver vírgula, trate como decimal (Ex: 1,5 significa 1.5).
+        Você é um assistente de logística. Analise esta imagem e extraia os dados do produto.
+        REGRAS:
+        - "referencia": O código ou ID do produto.
+        - "nome": O nome descritivo (ex: Fardo de Arroz).
+        - "quantidade": Quantidade lida (número).
+        - "especificacao": Detalhes técnicos (ex: '100% Algodão', 'Validade 2026', '220V').
         
-        Retorne APENAS um objeto JSON válido, sem formatação markdown (```json), com as seguintes chaves:
-        - "referencia": O código ou ID do produto (se não houver, crie um curto).
-        - "quantidade": A quantidade exata lida (número). Use 1 se não estiver visível.
-        - "peso": O peso (número). Use 0 se não for aplicável.
-        - "nome": O nome descritivo do produto.
+        Retorne APENAS um JSON:
+        {"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}
         """
         
         # Chamada usando o padrão do SDK novo

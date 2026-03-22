@@ -7,7 +7,7 @@ from twilio.request_validator import RequestValidator
 from functools import wraps
 from dotenv import load_dotenv
 
-# Importação nova adicionada aqui (buscar_cliente_por_whatsapp)
+
 from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook
 from services.leitor import analisar_imagem
 from services.sheets import atualizar_sheets
@@ -39,9 +39,31 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath("chave_nova.json"
 @app.route("/whatsapp", methods=['POST'])
 @validate_twilio_request
 def whatsapp():
-    numero_usuario = request.values.get('From', '')
-    corpo_mensagem = request.values.get('Body', '').strip().lower()
+    # Pega os dados brutos e limpa
+    numero_usuario = request.values.get('From', '').replace('whatsapp:', '')
+    corpo_mensagem_original = request.values.get('Body', '').strip()
+    corpo_mensagem = corpo_mensagem_original.lower() # Versão para checagem de comandos
     num_media = request.values.get('NumMedia', '0')
+
+    # --- COMANDO DE ADMIN (SÓ VOCÊ) ---
+    ADMIN_NUMBER = os.getenv('ADMIN_NUMBER') 
+    
+    if numero_usuario == ADMIN_NUMBER and corpo_mensagem.startswith('admin_add'):
+        partes = corpo_mensagem_original.split() # Usa a original para não perder maiúsculas no Nome/ID
+        if len(partes) >= 4:
+            nome_empresa = partes[1].replace('_', ' ')
+            zap_novo = partes[2]
+            planilha_nova = partes[3]
+            
+            from services.banco import admin_cadastrar_cliente
+            novo_id = admin_cadastrar_cliente(nome_empresa, zap_novo, planilha_nova)
+            
+            res = MessagingResponse()
+            if novo_id:
+                res.message(f"✅ *Cliente {nome_empresa} Cadastrado!*\nID: {novo_id}\nStatus: Ativo")
+            else:
+                res.message("❌ Erro ao cadastrar. Verifique se o número já existe.")
+            return str(res)
 
     # --- IDENTIFICAÇÃO DINÂMICA DO CLIENTE ---
     numero_limpo = numero_usuario.replace('whatsapp:', '')
@@ -121,8 +143,16 @@ def processar_imagem_background(url_imagem, numero_usuario, client_id, planilha_
 
         log = salvar_no_banco(dados_extraidos, client_id, planilha_id)
         atualizar_sheets(dados_extraidos, log['total'], planilha_id)
+        nome_prod = dados_extraidos.get('nome', 'Produto')
+        espec = dados_extraidos.get('especificacao', 'N/A')
         
-        msg = f"✅ Entrada Registrada!\n\n📦 Ref: {log['product_id']}\n⚖️ Peso: {dados_extraidos.get('peso', 0)}\n📊 Total Estoque: {log['total']}\n\n Para reverter, digite 'Corrigir'"
+        msg = (f"✅ *Entrada Registrada!*\n\n"
+               f"📦 *Produto:* {nome_prod}\n"
+               f"🔧 *Spec:* {espec}\n"
+               f"🔢 *Ref:* {log['product_id']}\n"
+               f"📊 *Estoque Atual:* {log['total']}\n\n"
+               f"Para reverter, digite 'Corrigir'")
+               
         enviar_whatsapp(numero_usuario, msg)
 
     except Exception as e:

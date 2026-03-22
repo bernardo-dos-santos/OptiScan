@@ -25,12 +25,14 @@ def setup_supabase():
             )
         """)
 
-        # Tabela de Estoque
+        # Tabela de Estoque Atualizada
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS estoque (
                 id SERIAL PRIMARY KEY,
                 client_id INTEGER REFERENCES clientes(id),
                 product_id VARCHAR(100) NOT NULL,
+                nome TEXT,
+                especificacao TEXT,
                 quantity NUMERIC DEFAULT 0,
                 peso NUMERIC DEFAULT 0,
                 ultima_atualizacao TIMESTAMP
