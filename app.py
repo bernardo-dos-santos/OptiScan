@@ -7,8 +7,8 @@ from twilio.request_validator import RequestValidator
 from functools import wraps
 from dotenv import load_dotenv
 
-
-from services.banco import salvar_no_banco, executar_estorno_banco
+# Importação nova adicionada aqui (buscar_cliente_por_whatsapp)
+from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp
 from services.leitor import analisar_imagem
 from services.sheets import atualizar_sheets
 
@@ -18,24 +18,19 @@ app = Flask(__name__)
 TWILIO_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 twilio_client = Client(TWILIO_SID, TWILIO_TOKEN)
-TWILIO_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', 'whatsapp:+14155238886') # Ajuste se necessário
+TWILIO_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', 'whatsapp:+14155238886')
 
 def validate_twilio_request(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         validator = RequestValidator(os.getenv('TWILIO_AUTH_TOKEN'))
-        
-        # O Twilio envia a assinatura no cabeçalho 'X-Twilio-Signature'
         signature = request.headers.get('X-Twilio-Signature', '')
-        
-        # Precisamos da URL completa que o Twilio está chamando
-        # Se você estiver usando ngrok para testar, ele cuida disso
         url = request.url
         data = request.form.to_dict()
 
         if not validator.validate(url, data, signature):
             print("🚨 TENTATIVA DE INVASÃO: Assinatura do Twilio inválida!")
-            abort(403) # Retorna "Proibido"
+            abort(403) 
         return f(*args, **kwargs)
     return decorated_function
 
@@ -48,13 +43,21 @@ def whatsapp():
     corpo_mensagem = request.values.get('Body', '').strip().lower()
     num_media = request.values.get('NumMedia', '0')
 
+    # --- IDENTIFICAÇÃO DINÂMICA DO CLIENTE ---
+    numero_limpo = numero_usuario.replace('whatsapp:', '')
+    cliente = buscar_cliente_por_whatsapp(numero_limpo)
     
-    client_id = 1 
-    planilha_id = os.getenv('PLANILHA_ID')
-
     res = MessagingResponse()
 
- # --- COMANDO DE CORREÇÃO (ESTORNO) ---
+    if not cliente:
+        res.message("❌ Número não autorizado. Contate o suporte do Optilog para registrar a sua empresa.")
+        return str(res)
+    
+    client_id = cliente['id']
+    planilha_id = cliente['planilha_id']
+    # -----------------------------------------
+
+    # --- COMANDO DE CORREÇÃO (ESTORNO) ---
     if corpo_mensagem == "corrigir":
         resultado = executar_estorno_banco(client_id, planilha_id)
         if resultado:
@@ -69,7 +72,6 @@ def whatsapp():
         partes = corpo_mensagem.split()
         
         if len(partes) >= 3:
-            # Remove o acento caso o corretor do celular do funcionário coloque "saída"
             comando = partes[0].replace('í', 'i') 
             ref = partes[1].upper()
             
@@ -95,11 +97,8 @@ def whatsapp():
     # --- ENTRADA VIA FOTO (ASSÍNCRONA) ---
     if num_media != '0':
         url_imagem = request.values.get('MediaUrl0')
-        
-        # Responde HTTP 200 rápido para o Twilio não dar erro de Timeout
         res.message("📸 Imagem recebida. Analisando...")
         
-        # Delega o trabalho pesado (OCR/Gemini, Banco e Planilha) para background
         threading.Thread(
             target=processar_imagem_background,
             args=(url_imagem, numero_usuario, client_id, planilha_id)
@@ -114,20 +113,15 @@ def whatsapp():
 def processar_imagem_background(url_imagem, numero_usuario, client_id, planilha_id):
     """Função que roda nos bastidores sem prender o Webhook"""
     try:
-        # 1. Visão Computacional
         dados_extraidos = analisar_imagem(url_imagem)
         
         if not dados_extraidos or dados_extraidos.get('referencia') == 'N/A':
             enviar_whatsapp(numero_usuario, "❌ Não consegui ler os dados da etiqueta nesta foto. Tente mais de perto.")
             return
 
-        # 2. Lógica de Banco e Sincronização
         log = salvar_no_banco(dados_extraidos, client_id, planilha_id)
-        
-        # 3. Atualização Externa
         atualizar_sheets(dados_extraidos, log['total'], planilha_id)
         
-        # 4. Feedback Final
         msg = f"✅ Entrada Registrada!\n\n📦 Ref: {log['product_id']}\n⚖️ Peso: {dados_extraidos.get('peso', 0)}\n📊 Total Estoque: {log['total']}\n\n Para reverter, digite 'Corrigir'"
         enviar_whatsapp(numero_usuario, msg)
 

@@ -13,6 +13,18 @@ def get_conexao():
         port=os.getenv('DB_PORT', 5432)
     )
 
+def buscar_cliente_por_whatsapp(numero_whatsapp):
+    conn = get_conexao()
+    cursor = conn.cursor()
+    # Busca o ID do cliente e o ID da planilha associada a ele
+    cursor.execute("SELECT id, planilha_id FROM clientes WHERE whatsapp = %s", (numero_whatsapp,))
+    cliente = cursor.fetchone()
+    conn.close()
+    
+    if cliente:
+        return {'id': cliente[0], 'planilha_id': cliente[1]}
+    return None
+
 def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     ref = str(dados.get('referencia', 'ITEM_DESCONHECIDO')).upper()
     
