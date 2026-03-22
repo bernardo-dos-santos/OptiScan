@@ -160,10 +160,16 @@ def processar_imagem_background(url_imagem, numero_usuario, client_id, planilha_
 
 def enviar_whatsapp(para, texto):
     """Função auxiliar para enviar mensagens ativas via Twilio"""
+    # Garante que o número do remetente tenha o prefixo correto
+    remetente = TWILIO_NUMBER if TWILIO_NUMBER.startswith('whatsapp:') else f"whatsapp:{TWILIO_NUMBER}"
+    
+    # Garante que o número do destinatário tenha o prefixo correto
+    destinatario = para if para.startswith('whatsapp:') else f"whatsapp:{para}"
+    
     twilio_client.messages.create(
         body=texto,
-        from_=TWILIO_NUMBER,
-        to=para
+        from_=remetente,
+        to=destinatario
     )
 
 @app.route("/webhook_planilha", methods=['POST'])
