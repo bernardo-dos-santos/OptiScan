@@ -3,7 +3,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-from services.banco import get_conexao
 
 def _obter_cliente_gspread():
     caminho_absoluto = os.path.abspath('chave_nova.json')
@@ -19,8 +18,6 @@ def atualizar_sheets(dados, total_banco, planilha_id):
     ref_limpa = str(dados.get('referencia', 'N/A')).upper()
     nome_limpo = str(dados.get('nome', 'Produto Sem Nome'))
     espec_limpa = str(dados.get('especificacao', 'N/A'))
-
-   
 
     try:
         # Agora busca a referência especificamente na coluna C (3)
