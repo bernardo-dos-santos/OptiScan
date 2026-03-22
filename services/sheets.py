@@ -9,18 +9,6 @@ def _obter_cliente_gspread():
     creds = ServiceAccountCredentials.from_json_keyfile_name(caminho_absoluto, scope)
     return gspread.authorize(creds)
 
-def buscar_saldo_na_planilha(product_id, planilha_id):
-    try:
-        client = _obter_cliente_gspread()
-        sheet = client.open_by_key(planilha_id).sheet1
-        celula = sheet.find(product_id)
-        if celula:
-            valor_texto = sheet.cell(celula.row, 4).value
-            return float(str(valor_texto).replace(',', '.')) if valor_texto else 0.0
-        return 0.0
-    except Exception as e:
-        print(f"Erro Sheet: {e}")
-        return 0.0
 
 def atualizar_sheets(dados, total_banco, planilha_id):
     client = _obter_cliente_gspread()

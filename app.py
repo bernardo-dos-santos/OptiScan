@@ -8,7 +8,7 @@ from functools import wraps
 from dotenv import load_dotenv
 
 # Importação nova adicionada aqui (buscar_cliente_por_whatsapp)
-from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp
+from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook
 from services.leitor import analisar_imagem
 from services.sheets import atualizar_sheets
 
@@ -135,6 +135,35 @@ def enviar_whatsapp(para, texto):
         from_=TWILIO_NUMBER,
         to=para
     )
+
+@app.route("/webhook_planilha", methods=['POST'])
+def webhook_planilha():
+    # --- VALIDAÇÃO DE SEGURANÇA ---
+    token_recebido = request.headers.get('x-api-key')
+    token_esperado = os.getenv('WEBHOOK_SECRET') 
+    
+    if token_recebido != token_esperado:
+        print("🚨 TENTATIVA DE INVASÃO: Token do Webhook inválido!")
+        return "Não autorizado", 403
+    # ------------------------------
+
+    dados = request.json
+    if not dados:
+        return "Sem dados", 400
+        
+    client_id = dados.get('client_id')
+    ref = dados.get('referencia')
+    nova_qtd = dados.get('quantidade')
+    
+    if not all([client_id, ref, nova_qtd is not None]):
+        return "Dados incompletos", 400
+        
+    try:
+        nova_qtd = float(nova_qtd)
+        atualizar_estoque_via_webhook(client_id, str(ref), nova_qtd)
+        return "Atualizado no banco", 200
+    except Exception as e:
+        return str(e), 500
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)

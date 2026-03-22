@@ -39,7 +39,7 @@ def analisar_imagem(url_imagem):
         
         # Chamada usando o padrão do SDK novo
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # Pode usar o flash que é rápido e barato
+            model='gemini-2.0-flash', # Pode usar o flash que é rápido e barato
             contents=[
                 types.Part.from_bytes(data=resposta.content, mime_type='image/jpeg'),
                 prompt
