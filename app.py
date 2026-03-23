@@ -1,6 +1,6 @@
 import os
 import threading
-from flask import Flask, request, abort
+from flask import Flask, jsonify, request, abort
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
 from services.leitor import analisar_imagem
-from services.sheets import atualizar_sheets
+from services.sheets import atualizar_sheets, verificar_alerta_minimo
 
 load_dotenv()
 
@@ -37,7 +37,7 @@ def validate_twilio_request(f):
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath("chave_nova.json")
 
 @app.route("/whatsapp", methods=['POST'])
-# @validate_twilio_request
+@validate_twilio_request
 def whatsapp():
     # Pega os dados brutos e limpa
     numero_usuario = request.values.get('From', '').replace('whatsapp:', '')
@@ -104,13 +104,33 @@ def whatsapp():
             
             dados_manuais = {'referencia': ref, 'quantidade': qtd, 'peso': 0}
             tipo_op = 'ENTRADA' if comando == "entrada" else 'SAIDA'
+
+            # --- COMANDO DE CONSULTA DE ESTOQUE ---
+            comando_estoque = corpo_mensagem.lower().strip()
+    
+            if comando_estoque in ["estoque", "estóque"]:
+                from services.sheets import consultar_estoque_geral
+                relatorio = consultar_estoque_geral(planilha_id)
+                res.message(relatorio)
+                return str(res)
             
+            # 1. Salva no banco e atualiza planilha
             log = salvar_no_banco(dados_manuais, client_id, planilha_id, tipo_operacao=tipo_op)
             atualizar_sheets(dados_manuais, log['total'], planilha_id)
+
+            # 2. Verifica o alerta de estoque mínimo (Variável renomeada para qtd_atual)
+            alerta, produto, qtd_atual = verificar_alerta_minimo(planilha_id, ref)
+
+            if alerta:
+                msg_alerta = f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto}* atingiu {qtd_atual} unidades. Sugerimos reposição!"
+                enviar_whatsapp(numero_usuario, msg_alerta)
             
+            # 3. Confirma a operação SEMPRE (independente de ter alerta ou não)
             acao = "Adicionadas" if tipo_op == 'ENTRADA' else "Removidas"
             res.message(f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {qtd} unidades {acao}.\n📊 Novo Saldo: {log['total']}")
+            
         else:
+            # Cai aqui se o cara digitar só "entrada" sem o resto
             res.message("❌ Formato incorreto. Use: `entrada [CÓDIGO] [QTD]` ou `saida [CÓDIGO] [QTD]`")
         
         return str(res)
@@ -204,6 +224,19 @@ def webhook_planilha():
         return "Atualizado no banco", 200
     except Exception as e:
         return str(e), 500
+    
+@app.route('/alerta-planilha', methods=['POST'])
+def alerta_planilha():
+    dados = request.json
+    produto = dados.get('produto')
+    quantidade = dados.get('quantidade')
+    
+    msg_alerta = f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto}* atingiu {quantidade} unidades devido a uma movimentação na planilha. Sugerimos reposição!"
+    
+    # Chama sua função do Twilio/Meta para enviar a mensagem
+    # enviar_whatsapp(NUMERO_GESTOR, msg_alerta)
+    
+    return jsonify({"status": "Alerta enviado"}), 200
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
