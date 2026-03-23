@@ -1,6 +1,6 @@
 import os
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from services.sheets import atualizar_sheets
 
 def get_conexao():
@@ -14,8 +14,10 @@ def get_conexao():
 
 def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     ref = str(dados.get('referencia', 'ITEM_DESCONHECIDO')).upper()
-    nome = str(dados.get('nome', 'Produto Sem Nome'))
-    espec = str(dados.get('especificacao', 'N/A'))
+    
+    # Pega os dados sem forçar padrão ainda
+    nome_recebido = dados.get('nome')
+    espec_recebida = dados.get('especificacao')
     
     try:
         qtd_movimento = float(dados.get('quantidade', 1))
@@ -27,8 +29,8 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     conn = get_conexao()
     cursor = conn.cursor()
 
-    # 1. Busca o saldo e dados atuais
-    cursor.execute("SELECT quantity FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
+    # 1. Busca o saldo E os dados atuais (para não apagar na saída manual)
+    cursor.execute("SELECT quantity, nome, especificacao FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     resultado = cursor.fetchone()
     
     # --- TRAVA DE SEGURANÇA PARA SAÍDAS ---
@@ -54,22 +56,32 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
         novo_total = saldo_atual_banco - qtd_movimento
         if novo_total < 0: novo_total = 0
 
-    agora = datetime.now()
+    # Ajuste de Fuso Horário (UTC-3 Brasil)
+    agora = datetime.utcnow() - timedelta(hours=3)
 
-    # 3. Update ou Insert incluindo NOME e ESPECIFICAÇÃO
+    # 3. Update ou Insert inteligente
     if resultado:
+        nome_banco = resultado[1]
+        espec_banco = resultado[2]
+        
+        nome_final = nome_recebido if nome_recebido else (nome_banco if nome_banco else 'Produto Sem Nome')
+        espec_final = espec_recebida if espec_recebida else (espec_banco if espec_banco else 'N/A')
+        
         cursor.execute("""
             UPDATE estoque 
             SET quantity = %s, peso = %s, nome = %s, especificacao = %s, ultima_atualizacao = %s
             WHERE product_id = %s AND client_id = %s
-        """, (novo_total, peso_movimento, nome, espec, agora, ref, client_id))
+        """, (novo_total, peso_movimento, nome_final, espec_final, agora, ref, client_id))
     else:
+        nome_final = nome_recebido if nome_recebido else 'Produto Sem Nome'
+        espec_final = espec_recebida if espec_recebida else 'N/A'
+        
         cursor.execute("""
             INSERT INTO estoque (client_id, product_id, nome, especificacao, quantity, peso, ultima_atualizacao)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (client_id, ref, nome, espec, novo_total, peso_movimento, agora))
+        """, (client_id, ref, nome_final, espec_final, novo_total, peso_movimento, agora))
 
-    # 4. Histórico (opcional: pode adicionar colunas aqui também se quiser log detalhado)
+    # 4. Histórico
     cursor.execute("""
         INSERT INTO historico (client_id, product_id, quantidade, tipo, data)
         VALUES (%s, %s, %s, %s, %s)
@@ -101,7 +113,9 @@ def executar_estorno_banco(client_id, planilha_id):
         return None
 
     ref, qtd_ia, tipo = ultima_transacao
-    agora = datetime.now()
+    
+    # Ajuste Fuso
+    agora = datetime.utcnow() - timedelta(hours=3)
 
     cursor.execute("SELECT quantity FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     resultado_estoque = cursor.fetchone()
@@ -170,7 +184,9 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id):
 def atualizar_estoque_via_webhook(client_id, ref, nova_qtd):
     conn = get_conexao()
     cursor = conn.cursor()
-    agora = datetime.now()
+    
+    # Ajuste Fuso
+    agora = datetime.utcnow() - timedelta(hours=3)
     
     cursor.execute("SELECT id FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     existe = cursor.fetchone()

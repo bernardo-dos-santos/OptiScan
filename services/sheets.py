@@ -1,7 +1,7 @@
 import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def _obter_cliente_gspread():
     caminho_absoluto = os.path.abspath('chave_nova.json')
@@ -12,7 +12,9 @@ def _obter_cliente_gspread():
 def atualizar_sheets(dados, total_banco, planilha_id):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1
-    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    
+    # Ajuste Fuso
+    data_hora = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
 
     ref_limpa = str(dados.get('referencia', 'N/A')).upper()
     # Pega os dados sem forçar um valor padrão imediato
@@ -52,7 +54,6 @@ def verificar_alerta_minimo(planilha_id, referencia):
         linha = celula.row
         valores = aba.row_values(linha)
         
-        
         qtd_atual = float(valores[3])
         qtd_minima = float(valores[5]) if len(valores) >= 6 and valores[5] else 0
         
@@ -81,7 +82,9 @@ def consultar_estoque_geral(planilha_id):
         except (ValueError, IndexError):
             continue
             
-    return msg + f"_Gerado às: {datetime.now().strftime('%H:%M')}_"
+    # Ajuste Fuso
+    hora_atual = (datetime.utcnow() - timedelta(hours=3)).strftime('%H:%M')
+    return msg + f"_Gerado às: {hora_atual}_"
 
 def buscar_produto_por_nome_ou_id(planilha_id, termo):
     client = _obter_cliente_gspread()
@@ -98,7 +101,7 @@ def buscar_produto_por_nome_ou_id(planilha_id, termo):
             ref = str(linha[2]).upper()
             
             # Se bater o ID exato, retorna direto (prioridade máxima)
-            if termo == ref or termo == nome:
+            if termo == ref:
                 return [{'nome': linha[1], 'ref': ref}]
             
             # Se o termo digitado fizer parte do nome do produto, adiciona na lista
@@ -106,6 +109,5 @@ def buscar_produto_por_nome_ou_id(planilha_id, termo):
                 resultados.append({'nome': linha[1], 'ref': ref})
                 
     return resultados
-
         
     
