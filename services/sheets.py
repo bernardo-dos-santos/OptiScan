@@ -3,7 +3,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-
 def _obter_cliente_gspread():
     caminho_absoluto = os.path.abspath('chave_nova.json')
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -16,25 +15,32 @@ def atualizar_sheets(dados, total_banco, planilha_id):
     data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     ref_limpa = str(dados.get('referencia', 'N/A')).upper()
-    nome_limpo = str(dados.get('nome', 'Produto Sem Nome'))
-    espec_limpa = str(dados.get('especificacao', 'N/A'))
+    # Pega os dados sem forçar um valor padrão imediato
+    nome_recebido = dados.get('nome')
+    espec_recebida = dados.get('especificacao')
 
     try:
-        # Agora busca a referência especificamente na coluna C (3)
         celula = aba.find(ref_limpa, in_column=3)
     except gspread.exceptions.CellNotFound:
         celula = None
 
     if celula:
         linha = celula.row
-        # Atualiza os dados mantendo a ordem
+        # Atualiza SEMPRE a Data e a Quantidade
         aba.update_acell(f'A{linha}', data_hora)
-        aba.update_acell(f'B{linha}', nome_limpo)
         aba.update_acell(f'D{linha}', str(total_banco))
-        aba.update_acell(f'E{linha}', espec_limpa)
+        
+        # Só atualiza Nome e Especificação se a IA os capturou (evita apagar no estorno/manual)
+        if nome_recebido:
+            aba.update_acell(f'B{linha}', str(nome_recebido))
+        if espec_recebida:
+            aba.update_acell(f'E{linha}', str(espec_recebida))
     else:
-        # Cria linha nova na ordem exata: Data, Nome, Ref, Quant, Spec
-        nova_linha = [data_hora, nome_limpo, ref_limpa, total_banco, espec_limpa]
+        # Se for uma linha nova, aplica o valor padrão caso algum campo venha vazio
+        nome_final = str(nome_recebido if nome_recebido else 'Produto Sem Nome')
+        espec_final = str(espec_recebida if espec_recebida else 'N/A')
+        
+        nova_linha = [data_hora, nome_final, ref_limpa, total_banco, espec_final]
         aba.append_row(nova_linha)
 
         
