@@ -28,9 +28,9 @@ def analisar_imagem(url_imagem):
         Você é um assistente de logística. Analise esta imagem e extraia os dados do produto.
         REGRAS:
         - "referencia": O código ou ID do produto.
-        - "nome": O nome descritivo (ex: Fardo de Arroz).
-        - "quantidade": Quantidade lida (número).
-        - "especificacao": Detalhes técnicos (ex: '100% Algodão', 'Validade 2026', '220V').
+        - "nome": NOME CURTO DO PRODUTO (MÁXIMO 2 PALAVRAS). Ex: 'Arroz Branco', 'Óleo Soya'.
+        - "quantidade": Apenas a contagem de itens ou volumes lidos (número).
+        - "especificacao": Detalhes técnicos e medidas (ex: '100% Algodão', '220V', '500g', '2 Litros'). OBS: Não repita a contagem de itens aqui. Peso e volume são especificações, mas a quantidade de fardos/caixas não.
         
         Retorne APENAS um JSON:
         {"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}

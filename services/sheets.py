@@ -83,5 +83,29 @@ def consultar_estoque_geral(planilha_id):
             
     return msg + f"_Gerado às: {datetime.now().strftime('%H:%M')}_"
 
+def buscar_produto_por_nome_ou_id(planilha_id, termo):
+    client = _obter_cliente_gspread()
+    aba = client.open_by_key(planilha_id).sheet1
+    dados = aba.get_all_values()
+    
+    resultados = []
+    termo = str(termo).upper().strip()
+    
+    # Pula cabeçalho
+    for linha in dados[1:]:
+        if len(linha) >= 3:
+            nome = str(linha[1]).upper()
+            ref = str(linha[2]).upper()
+            
+            # Se bater o ID exato, retorna direto (prioridade máxima)
+            if termo == ref:
+                return [{'nome': linha[1], 'ref': ref}]
+            
+            # Se o termo digitado fizer parte do nome do produto, adiciona na lista
+            if termo in nome:
+                resultados.append({'nome': linha[1], 'ref': ref})
+                
+    return resultados
+
         
     

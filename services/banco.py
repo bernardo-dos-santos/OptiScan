@@ -31,6 +31,20 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     cursor.execute("SELECT quantity FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     resultado = cursor.fetchone()
     
+    # --- TRAVA DE SEGURANÇA PARA SAÍDAS ---
+    if tipo_operacao == 'SAIDA':
+        if not resultado:
+            cursor.close()
+            conn.close()
+            return {'erro': f"O código *{ref}* não está cadastrado no sistema."}
+        
+        saldo_atual_temp = float(resultado[0])
+        if qtd_movimento > saldo_atual_temp:
+            cursor.close()
+            conn.close()
+            return {'erro': f"Estoque insuficiente. Você tentou retirar {qtd_movimento}, mas só há {saldo_atual_temp} unidades de *{ref}*."}
+    # --------------------------------------
+     
     saldo_atual_banco = float(resultado[0]) if resultado else 0.0
 
     # 2. Calcula novo saldo

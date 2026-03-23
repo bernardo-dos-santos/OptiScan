@@ -71,7 +71,7 @@ def whatsapp():
     res = MessagingResponse()
 
     if not cliente:
-        res.message("❌ Número não autorizado. Contate o suporte do Optilog para registrar a sua empresa.")
+        res.message("❌ Número não reconhecido. Parece que seu número não está registrado, entre em contato com o suporte da OptiScan para mais informações.")
         return str(res)
     
     client_id = cliente['id']
@@ -93,45 +93,61 @@ def whatsapp():
         partes = corpo_mensagem.split()
         
         if len(partes) >= 3:
-            comando = partes[0].replace('í', 'i') 
-            ref = partes[1].upper()
+            comando = partes[0].replace('í', 'i').lower()
             
+            # O último item digitado sempre deve ser a quantidade
             try:
-                qtd = float(partes[2].replace(',', '.'))
+                qtd = float(partes[-1].replace(',', '.'))
             except ValueError:
-                res.message("❌ Quantidade inválida. Use apenas números.")
+                res.message("❌ Erro de formato. Certifique-se de que o *último* termo seja a quantidade (número).")
                 return str(res)
             
-            dados_manuais = {'referencia': ref, 'quantidade': qtd, 'peso': 0}
+            # O que sobra entre o comando e a quantidade é o termo de busca (ID ou Nome)
+            termo_busca = " ".join(partes[1:-1]).upper()
+            
+            # Busca na planilha
+            from services.sheets import buscar_produto_por_nome_ou_id
+            produtos_encontrados = buscar_produto_por_nome_ou_id(planilha_id, termo_busca)
+            
+            if len(produtos_encontrados) == 0:
+                res.message(f"❌ Nenhum produto encontrado com o nome ou ID: *{termo_busca}*")
+                return str(res)
+                
+            elif len(produtos_encontrados) > 1:
+                # AMBIGUIDADE: Mostra as opções e pede para o usuário usar o ID
+                msg_ambigua = f"⚠️ Encontramos mais de um produto contendo *{termo_busca}*.\nPara evitar erros, repita a operação usando o *ID* do produto correto:\n\n"
+                for p in produtos_encontrados:
+                    msg_ambigua += f"🔹 {p['nome']} -> ID: *{p['ref']}*\n"
+                
+                msg_ambigua += f"\nExemplo: `{comando} {produtos_encontrados[0]['ref']} {qtd}`"
+                res.message(msg_ambigua)
+                return str(res)
+            
+            # Se encontrou exatamente 1 produto, pega a referência exata e segue o fluxo normal
+            ref_exata = produtos_encontrados[0]['ref']
+            
+            dados_manuais = {'referencia': ref_exata, 'quantidade': qtd, 'peso': 0}
             tipo_op = 'ENTRADA' if comando == "entrada" else 'SAIDA'
-
-            # --- COMANDO DE CONSULTA DE ESTOQUE ---
-            comando_estoque = corpo_mensagem.lower().strip()
-    
-            if comando_estoque in ["estoque", "estóque"]:
-                from services.sheets import consultar_estoque_geral
-                relatorio = consultar_estoque_geral(planilha_id)
-                res.message(relatorio)
-                return str(res)
             
-            # 1. Salva no banco e atualiza planilha
             log = salvar_no_banco(dados_manuais, client_id, planilha_id, tipo_operacao=tipo_op)
+
+            if log.get('erro'):
+                res.message(f"❌ *Operação Negada:*\n{log['erro']}")
+                return str(res)
+                
             atualizar_sheets(dados_manuais, log['total'], planilha_id)
 
-            # 2. Verifica o alerta de estoque mínimo (Variável renomeada para qtd_atual)
-            alerta, produto, qtd_atual = verificar_alerta_minimo(planilha_id, ref)
+            alerta, produto_alerta, qtd_atual = verificar_alerta_minimo(planilha_id, ref_exata)
 
             if alerta:
-                msg_alerta = f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto}* atingiu {qtd_atual} unidades. Sugerimos reposição!"
+                msg_alerta = f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto_alerta}* atingiu {qtd_atual} unidades. Sugerimos reposição!"
                 enviar_whatsapp(numero_usuario, msg_alerta)
             
-            # 3. Confirma a operação SEMPRE (independente de ter alerta ou não)
             acao = "Adicionadas" if tipo_op == 'ENTRADA' else "Removidas"
             res.message(f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {qtd} unidades {acao}.\n📊 Novo Saldo: {log['total']}")
             
         else:
-            # Cai aqui se o cara digitar só "entrada" sem o resto
-            res.message("❌ Formato incorreto. Use: `entrada [CÓDIGO] [QTD]` ou `saida [CÓDIGO] [QTD]`")
+            res.message("❌ Formato incorreto. Use: `entrada [NOME OU ID] [QTD]`")
         
         return str(res)
 
@@ -148,8 +164,20 @@ def whatsapp():
         return str(res)
 
     # --- TEXTO LIVRE ---
-    res.message("👋 Envie a foto da etiqueta do fardo para registrar a entrada, ou digite 'saida [código] [qtd]'.")
+
+    # --- COMANDO DE CONSULTA DE ESTOQUE ---
+    comando_estoque = corpo_mensagem.lower().strip()
+    
+    if comando_estoque in ["estoque", "estóque"]:
+        from services.sheets import consultar_estoque_geral
+        relatorio = consultar_estoque_geral(planilha_id)
+        res.message(relatorio)
+        return str(res)
+    
+    
+    res.message("👋 Olá, Bem vindo a OptiScan, para mais informações, digite 'ajuda'.")
     return str(res)
+        
 
 def processar_imagem_background(url_imagem, numero_usuario, client_id, planilha_id):
     """Função que roda nos bastidores sem prender o Webhook"""
@@ -234,7 +262,7 @@ def alerta_planilha():
     msg_alerta = f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto}* atingiu {quantidade} unidades devido a uma movimentação na planilha. Sugerimos reposição!"
     
     # Chama sua função do Twilio/Meta para enviar a mensagem
-    # enviar_whatsapp(NUMERO_GESTOR, msg_alerta)
+    enviar_whatsapp(os.getenv('ADMIN_NUMBER') , msg_alerta)
     
     return jsonify({"status": "Alerta enviado"}), 200
 
