@@ -147,7 +147,8 @@ def whatsapp():
             res.message(f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {qtd} unidades {acao}.\n📊 Novo Saldo: {log['total']}")
             
         else:
-            res.message("❌ Formato incorreto. Use: `entrada [NOME OU ID] [QTD]`")
+            comando_tentado = partes[0].lower() if len(partes) > 0 else "comando"
+            res.message(f"❌ Formato incorreto. Use: `{comando_tentado} [NOME OU ID] [QTD]`")
         
         return str(res)
 

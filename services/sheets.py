@@ -98,7 +98,7 @@ def buscar_produto_por_nome_ou_id(planilha_id, termo):
             ref = str(linha[2]).upper()
             
             # Se bater o ID exato, retorna direto (prioridade máxima)
-            if termo == ref:
+            if termo == ref or termo == nome:
                 return [{'nome': linha[1], 'ref': ref}]
             
             # Se o termo digitado fizer parte do nome do produto, adiciona na lista
