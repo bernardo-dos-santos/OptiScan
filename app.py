@@ -2,6 +2,7 @@ import os
 import threading
 from flask import Flask, jsonify, request, abort
 import pytz
+import requests
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
@@ -21,6 +22,31 @@ TWILIO_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 twilio_client = Client(TWILIO_SID, TWILIO_TOKEN)
 TWILIO_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', 'whatsapp:+14155238886')
+
+
+def enviar_mensagem_meta(para_numero, texto):
+    token = os.getenv('META_ACCESS_TOKEN')
+    phone_id = os.getenv('META_PHONE_ID')
+    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "messaging_product": "whatsapp",
+        "to": para_numero,
+        "type": "text",
+        "text": {"body": texto}
+    }
+    
+    try:
+        resposta = requests.post(url, headers=headers, json=data)
+        print("Status do envio:", resposta.status_code)
+    except Exception as e:
+        print(f"Erro ao enviar via Meta: {e}")
+
 
 def validate_twilio_request(f):
     @wraps(f)
@@ -224,12 +250,31 @@ def webhook_meta():
             return 'Token invalido', 403
             
     elif request.method == 'POST':
-        # Aqui é onde vamos colocar a lógica para ler as mensagens da Meta depois
         body = request.json
-        print("📩 Webhook recebido da Meta:", body)
+        
+        # Verifica se o evento vem do WhatsApp
+        if body and body.get('object') == 'whatsapp_business_account':
+            for entry in body.get('entry', []):
+                for change in entry.get('changes', []):
+                    value = change.get('value', {})
+                    
+                    # Garante que é uma mensagem e não um aviso de leitura
+                    if 'messages' in value:
+                        mensagem = value['messages'][0]
+                        telefone_remetente = mensagem['from']
+                        
+                        # Trata apenas mensagens de texto por enquanto
+                        if mensagem['type'] == 'text':
+                            texto_recebido = mensagem['text']['body']
+                            print(f"Chegou de {telefone_remetente}: {texto_recebido}")
+                            
+                            # O bot responde de volta
+                            resposta = f"OptiScan processou: você disse '{texto_recebido}'"
+                            enviar_mensagem_meta(telefone_remetente, resposta)
+                            
         return 'EVENT_RECEIVED', 200
     
-    
+
 def enviar_whatsapp(para, texto):
     """Função auxiliar para enviar mensagens ativas via Twilio"""
     try:
