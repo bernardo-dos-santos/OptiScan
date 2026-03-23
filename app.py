@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 
 
-from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
+from services.banco import get_conexao, salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
 from services.leitor import analisar_imagem
 from services.sheets import atualizar_sheets, verificar_alerta_minimo
 
@@ -208,6 +208,28 @@ def processar_imagem_background(url_imagem, numero_usuario, client_id, planilha_
     except Exception as e:
         enviar_whatsapp(numero_usuario, f"⚠️ Erro interno no sistema: {str(e)}")
 
+@app.route('/webhook', methods=['GET', 'POST'])
+def webhook_meta():
+    if request.method == 'GET':
+        # A Meta faz um GET na primeira vez para verificar a propriedade do servidor
+        verify_token = os.getenv('WEBHOOK_VERIFY_TOKEN')
+        mode = request.args.get('hub.mode')
+        token = request.args.get('hub.verify_token')
+        challenge = request.args.get('hub.challenge')
+
+        if mode == 'subscribe' and token == verify_token:
+            print("✅ Webhook verificado pela Meta com sucesso!")
+            return challenge, 200
+        else:
+            return 'Token invalido', 403
+            
+    elif request.method == 'POST':
+        # Aqui é onde vamos colocar a lógica para ler as mensagens da Meta depois
+        body = request.json
+        print("📩 Webhook recebido da Meta:", body)
+        return 'EVENT_RECEIVED', 200
+    
+    
 def enviar_whatsapp(para, texto):
     """Função auxiliar para enviar mensagens ativas via Twilio"""
     try:
