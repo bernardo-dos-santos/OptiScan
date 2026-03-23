@@ -1,11 +1,13 @@
 import os
 import threading
 from flask import Flask, jsonify, request, abort
+import pytz
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
 from functools import wraps
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 
 
 from services.banco import salvar_no_banco, executar_estorno_banco, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
@@ -267,5 +269,65 @@ def alerta_planilha():
     
     return jsonify({"status": "Alerta enviado"}), 200
 
+def enviar_resumo_turno():
+    conn = get_conexao()
+    cursor = conn.cursor()
+
+    # Busca itens críticos e cruza com o WhatsApp do cliente dono daquele stock
+    cursor.execute("""
+        SELECT c.whatsapp, e.product_id, e.nome, e.quantity, e.estoque_minimo
+        FROM estoque e
+        JOIN clientes c ON e.client_id = c.id
+        WHERE e.quantity <= e.estoque_minimo AND e.estoque_minimo > 0
+        ORDER BY c.whatsapp, e.nome;
+    """)
+    itens_criticos = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not itens_criticos:
+        print("Nenhum stock crítico. Resumo cancelado.")
+        return 
+
+    # Agrupa os itens por número de WhatsApp
+    alertas_por_cliente = {}
+    for whatsapp, product_id, nome, qtd, minimo in itens_criticos:
+        if whatsapp not in alertas_por_cliente:
+            alertas_por_cliente[whatsapp] = []
+        alertas_por_cliente[whatsapp].append(f"🔹 *{nome}* (ID: {product_id})\n   Restam: {qtd} | Mín.: {minimo}")
+
+    # Credenciais do Twilio
+    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+    numero_bot = 'whatsapp:+14155238886' # O teu número do Twilio Sandbox
+    cliente_twilio = Client(account_sid, auth_token)
+
+    # Dispara uma mensagem consolidada para cada cliente
+    for whatsapp, itens in alertas_por_cliente.items():
+        total = len(itens)
+        lista_itens = "\n\n".join(itens)
+        mensagem = (
+            "⚠️ *OPTISCAN - RESUMO DE STOCK* ⚠️\n\n"
+            "Os seguintes itens atingiram o nível crítico:\n\n"
+            f"{lista_itens}\n\n"
+            f"Total de itens a repor: {total}"
+        )
+        try:
+            cliente_twilio.messages.create(
+                from_=numero_bot,
+                body=mensagem,
+                to=whatsapp
+            )
+            print(f"Resumo enviado com sucesso para {whatsapp}")
+        except Exception as e:
+            print(f"Erro ao enviar para {whatsapp}: {e}")
+
+# --- CONFIGURAÇÃO DO DESPERTADOR ---
+fuso_horario = pytz.timezone('America/Sao_Paulo')
+scheduler = BackgroundScheduler(timezone=fuso_horario)
+
+# Dispara às 08:00, 13:00 e 18:00
+scheduler.add_job(enviar_resumo_turno, 'cron', hour='8,13,18', minute='0')
+scheduler.start()
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
