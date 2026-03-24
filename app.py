@@ -270,6 +270,8 @@ def webhook_meta():
                             
                             # O bot responde de volta
                             resposta = f"OptiScan processou: você disse '{texto_recebido}'"
+                            
+                            # Usa exatamente o número que a Meta mandou (que bate com o seu painel)
                             enviar_mensagem_meta(telefone_remetente, resposta)
                             
         return 'EVENT_RECEIVED', 200
