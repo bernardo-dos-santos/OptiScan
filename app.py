@@ -283,7 +283,7 @@ def enviar_resumo_turno():
         enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE DIÁRIO* ⚠️\n\nOs seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
-scheduler.add_job(enviar_resumo_turno, 'cron', hour='18', minute='15')
+scheduler.add_job(enviar_resumo_turno, 'cron', hour='19', minute='15')
 scheduler.add_job(func=rodar_analise_preditiva, trigger="cron", hour=3, minute=0)
 scheduler.start()
 
