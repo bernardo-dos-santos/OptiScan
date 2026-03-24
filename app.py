@@ -14,9 +14,11 @@ from services.banco import (
     buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, admin_cadastrar_cliente
 )
 from services.leitor import analisar_imagem
+from services.analista import rodar_analise_preditiva
 from services.sheets import (
     atualizar_sheets, verificar_alerta_minimo, 
     consultar_estoque_geral, buscar_produto_por_nome_ou_id
+    
 )
 
 load_dotenv()
@@ -223,11 +225,7 @@ def webhook_meta():
                                         return 'OK', 200
                                         
                                     atualizar_sheets(dados_manuais, log['total'], planilha_id)
-                                    alerta, produto_alerta, qtd_atual = verificar_alerta_minimo(planilha_id, ref_exata)
-
-                                    if alerta:
-                                        enviar_mensagem_meta(ADMIN_NUMBER, f"⚠️ *ALERTA*: O produto *{produto_alerta}* do cliente {client_id} atingiu {qtd_atual} unidades.")
-                                    
+                                                  
                                     acao = "Adicionadas" if tipo_op == 'ENTRADA' else "Removidas"
                                     enviar_mensagem_meta(telefone_remetente, f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {qtd} unidades {acao}.\n📊 Novo Saldo: {log['total']}")
                                 else:
@@ -282,10 +280,11 @@ def enviar_resumo_turno():
 
     for whatsapp, itens in alertas_por_cliente.items():
         lista_itens = "\n\n".join(itens)
-        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\nOs seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
+        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE DIÁRIO* ⚠️\n\nOs seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
-scheduler.add_job(enviar_resumo_turno, 'cron', hour='8,13,18', minute='0')
+scheduler.add_job(enviar_resumo_turno, 'cron', hour='18', minute='15')
+scheduler.add_job(func=rodar_analise_preditiva, trigger="cron", hour=3, minute=0)
 scheduler.start()
 
 if __name__ == "__main__":
