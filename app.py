@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import os
 import threading
 import hmac
@@ -48,6 +49,40 @@ def enviar_mensagem_meta(para_numero, texto):
     except Exception as e:
         print(f"❌ Erro fatal ao conectar na Meta: {e}", flush=True)
 
+def enviar_template_meta(para_numero, nome_template, variavel_empresa):
+    url = f"https://graph.facebook.com/v18.0/{META_PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_TOKEN}", 
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": para_numero,
+        "type": "template",
+        "template": {
+            "name": nome_template,
+            "language": {
+                "code": "pt_BR"
+            },
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "text": str(variavel_empresa)
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    try:
+        requests.post(url, headers=headers, json=payload)
+    except Exception as e:
+        print(f"Erro ao enviar template: {e}")
+
 def baixar_imagem_meta(media_id):
     url_info = f"https://graph.facebook.com/v18.0/{media_id}"
     headers = {"Authorization": f"Bearer {META_TOKEN}"}
@@ -71,9 +106,9 @@ def validar_assinatura_meta(payload, signature):
 
 # --- PROCESSAMENTO EM SEGUNDO PLANO ---
 
-def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id, contexto_ia=""):
+def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id, contexto_ia="", legenda=""):
     try:
-        dados_extraidos = analisar_imagem(img_data, contexto_cliente=contexto_ia)
+        dados_extraidos = analisar_imagem(img_data, contexto_cliente=contexto_ia, legenda=legenda)
      
         
         if not dados_extraidos or dados_extraidos.get('referencia') == 'ITEM_DESCONHECIDO':
@@ -135,13 +170,14 @@ def webhook_meta():
                                 return 'OK', 200
                                 
                             media_id = mensagem['image']['id']
+                            legenda = mensagem['image'].get('caption', '').strip()
                             enviar_mensagem_meta(telefone_remetente, "📸 Imagem recebida. Analisando...")
                             img_data = baixar_imagem_meta(media_id)
                             
                             if img_data:
                                 threading.Thread(
                                     target=processar_imagem_background,
-                                    args=(img_data, telefone_remetente, cliente['id'], cliente['planilha_id'], cliente.get('contexto_ia', ''))
+                                    args=(img_data, telefone_remetente, cliente['id'], cliente['planilha_id'], cliente.get('contexto_ia', ''), legenda)
                                 ).start()
                             else:
                                 enviar_mensagem_meta(telefone_remetente, "❌ Falha ao baixar o arquivo da Meta.")
@@ -152,18 +188,65 @@ def webhook_meta():
                             corpo_mensagem = mensagem['text']['body'].lower().strip()
                             corpo_mensagem_original = mensagem['text']['body'].strip()
                             
-                            # 1. Comando de Admin
-                            if telefone_remetente == ADMIN_NUMBER and corpo_mensagem.startswith('admin_add'):
+                           # --- COMANDOS DE ADMIN ---
+
+                           # --- COMANDO: CADASTRAR  ---
+                            if corpo_mensagem.startswith('!cadastrar'):
+                                if telefone_remetente != ADMIN_NUMBER:
+                                    enviar_mensagem_meta(telefone_remetente, "⛔ Comando restrito a administradores.")
+                                    return 'OK', 200
+                                
                                 partes = corpo_mensagem_original.split()
-                                if len(partes) >= 4:
-                                    nome_empresa = partes[1].replace('_', ' ')
-                                    zap_novo = partes[2]
-                                    planilha_nova = partes[3]
-                                    novo_id = admin_cadastrar_cliente(nome_empresa, zap_novo, planilha_nova)
-                                    if novo_id:
-                                        enviar_mensagem_meta(telefone_remetente, f"✅ *Cliente {nome_empresa} Cadastrado!*\nID: {novo_id}")
-                                    else:
-                                        enviar_mensagem_meta(telefone_remetente, "❌ Erro ao cadastrar. Verifique o banco de dados.")
+                                if len(partes) != 4:
+                                    enviar_mensagem_meta(telefone_remetente, "❌ Formato incorreto. Use: !cadastrar 554999999999 NomeEmpresa ID_PLANILHA")
+                                    return 'OK', 200
+                                
+                                _, numero_novo, nome_empresa, planilha_nova = partes
+                                sucesso = admin_cadastrar_cliente(nome_empresa, numero_novo, planilha_nova)
+                            
+                                if sucesso:
+                                    enviar_mensagem_meta(telefone_remetente, f"✅ Cliente {nome_empresa} salvo no banco com sucesso!")
+                                    enviar_template_meta(numero_novo, "boas_vindas_optiscan", nome_empresa)
+                                else:
+                                    enviar_mensagem_meta(telefone_remetente, "❌ Falha ao gravar no banco de dados.")
+                                return 'OK', 200
+                            
+                            # --- COMANDO: STATUS ---
+                            elif corpo_mensagem == '!status':
+                                if telefone_remetente != ADMIN_NUMBER:
+                                    enviar_mensagem_meta(telefone_remetente, "⛔ Comando restrito a administradores.")
+                                    return 'OK', 200
+                                
+                                msg_status = "🟢 *OPTISCAN STATUS* 🟢\n\n"
+                            
+                                try:
+                                    conn = get_conexao()
+                                    cursor = conn.cursor()
+                                
+                                    # Testa conexão
+                                    cursor.execute("SELECT 1")
+                                    msg_status += "✅ Banco de Dados: Online\n"
+                                
+                                    # Clientes Ativos
+                                    cursor.execute("SELECT COUNT(*) FROM clientes")
+                                    total_clientes = cursor.fetchone()[0]
+                                    msg_status += f"👥 Clientes Ativos: {total_clientes}\n"
+                                
+                                    # Movimentações Hoje
+                                    cursor.execute("SELECT COUNT(*) FROM historico WHERE DATE(data) = CURRENT_DATE")
+                                    mov_hoje = cursor.fetchone()[0]
+                                    msg_status += f"📊 Movimentações Hoje: {mov_hoje}\n"
+                                
+                                    cursor.close()
+                                    conn.close()
+                                except Exception as e:
+                                    msg_status += f"❌ Banco de Dados: FALHA\n_{e}_\n"
+                            
+                                agora = (datetime.utcnow() - timedelta(hours=3)).strftime('%d/%m/%Y %H:%M:%S')
+                                msg_status += f"\n⏱️ Servidor: {agora}\n"
+                                msg_status += "✅ Webhook Meta: Ativo\n"
+                            
+                                enviar_mensagem_meta(telefone_remetente, msg_status)
                                 return 'OK', 200
                             
                             # Validação de Cliente
@@ -232,9 +315,21 @@ def webhook_meta():
                                     enviar_mensagem_meta(telefone_remetente, "❌ Use: `entrada/saida [NOME OU ID] [QTD]`")
                                 return 'OK', 200
 
-                            # Fallback (Texto Livre)
-                            enviar_mensagem_meta(telefone_remetente, "👋 OptiScan Online. Envie uma foto do produto, digite 'estoque' ou use comandos manuais.")
+                           # Fallback (Texto Livre)
+                            print(f"Texto não reconhecido recebido: '{corpo_mensagem}'", flush=True)
+                            enviar_mensagem_meta(telefone_remetente, "👋 OptiScan Online. Envie uma foto da etiqueta, digite 'estoque' ou use comandos manuais.")
+                            return 'OK', 200
 
+                        # --- TRATAMENTO DE "LIXO" (Áudios, Figurinhas, Documentos, Vídeos) ---
+                        elif mensagem['type'] == 'audio':
+                            enviar_mensagem_meta(telefone_remetente, "🎙️ Desculpe, não consigo processar áudios. Por favor, envie texto ou foto da etiqueta.")
+                            return 'OK', 200
+                            
+                        elif mensagem['type'] not in ['image', 'text']:
+                            enviar_mensagem_meta(telefone_remetente, "🤖 Ops! Meu sistema não processa figurinhas, vídeos ou documentos. Apenas fotos de produtos ou comandos de texto.")
+                            return 'OK', 200
+
+        # Fim do loop principal
         return 'EVENT_RECEIVED', 200
 
 # --- ROTAS DE PLANILHA E ALERTAS ---
@@ -280,11 +375,11 @@ def enviar_resumo_turno():
 
     for whatsapp, itens in alertas_por_cliente.items():
         lista_itens = "\n\n".join(itens)
-        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE DIÁRIO* ⚠️\n\nOs seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
+        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\nOs seguintes itens atingiram o nível crítico hoje:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
-scheduler.add_job(enviar_resumo_turno, 'cron', hour='19', minute='15')
-scheduler.add_job(func=rodar_analise_preditiva, trigger="cron", hour=3, minute=0)
+scheduler.add_job(enviar_resumo_turno, 'cron', hour='18', minute='0')
+scheduler.add_job(func=rodar_analise_preditiva, trigger="cron", day_of_week='sun', hour=3, minute=0)
 scheduler.start()
 
 if __name__ == "__main__":
