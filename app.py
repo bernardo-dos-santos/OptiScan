@@ -41,9 +41,12 @@ def enviar_mensagem_meta(para_numero, texto):
         "text": {"body": texto}
     }
     try:
-        requests.post(url, headers=headers, json=data)
+        # Aqui está a mágica do debug
+        resposta = requests.post(url, headers=headers, json=data)
+        print(f"▶️ Tentando enviar para: {para_numero}", flush=True)
+        print(f"▶️ Status Meta: {resposta.status_code} | Resposta: {resposta.text}", flush=True)
     except Exception as e:
-        print(f"Erro ao enviar via Meta: {e}")
+        print(f"❌ Erro fatal ao conectar na Meta: {e}", flush=True)
 
 def baixar_imagem_meta(media_id):
     url_info = f"https://graph.facebook.com/v18.0/{media_id}"
@@ -98,6 +101,11 @@ def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook_meta():
+
+    mensagem = value['messages'][0]
+    telefone_remetente = mensagem['from']
+    print(f"📩 Mensagem recebida de: {telefone_remetente}", flush=True) # ADICIONE ESTA LINHA
+    
     if request.method == 'GET':
         mode = request.args.get('hub.mode')
         token = request.args.get('hub.verify_token')
@@ -105,6 +113,8 @@ def webhook_meta():
         if mode == 'subscribe' and token == VERIFY_TOKEN:
             return challenge, 200
         return 'Token invalido', 403
+    
+    
             
     elif request.method == 'POST':
         signature = request.headers.get('X-Hub-Signature-256')
