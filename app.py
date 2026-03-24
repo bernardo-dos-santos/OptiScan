@@ -399,4 +399,5 @@ scheduler = BackgroundScheduler(timezone=fuso_horario)
 scheduler.add_job(enviar_resumo_turno, 'cron', hour='8,13,18', minute='0')
 scheduler.start()
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    porta = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=porta, debug=False)
