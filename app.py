@@ -69,9 +69,10 @@ def validar_assinatura_meta(payload, signature):
 
 # --- PROCESSAMENTO EM SEGUNDO PLANO ---
 
-def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id):
+def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id, contexto_ia=""):
     try:
-        dados_extraidos = analisar_imagem(img_data)
+        dados_extraidos = analisar_imagem(img_data, contexto_cliente=contexto_ia)
+     
         
         if not dados_extraidos or dados_extraidos.get('referencia') == 'ITEM_DESCONHECIDO':
             enviar_mensagem_meta(numero_usuario, "❌ Não consegui ler os dados do produto nesta foto. Tente um ângulo melhor.")
@@ -138,7 +139,7 @@ def webhook_meta():
                             if img_data:
                                 threading.Thread(
                                     target=processar_imagem_background,
-                                    args=(img_data, telefone_remetente, cliente['id'], cliente['planilha_id'])
+                                    args=(img_data, telefone_remetente, cliente['id'], cliente['planilha_id'], cliente.get('contexto_ia', ''))
                                 ).start()
                             else:
                                 enviar_mensagem_meta(telefone_remetente, "❌ Falha ao baixar o arquivo da Meta.")

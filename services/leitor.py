@@ -3,35 +3,36 @@ import json
 from google import genai
 from google.genai import types
 
-def analisar_imagem(imagem_bytes):
+def analisar_imagem(imagem_bytes, contexto_cliente=""):
     """
-    O Cérebro do OptiScan: Analisa os bytes da imagem vindos da Meta e identifica
-    o nível de resina dental baseado no êmbolo.
+    Analisa os bytes da imagem vindos da Meta e extrai dados do produto.
     """
     try:
-        # 1. Configurar Gemini
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        # 2. Prompt com lógica de "Meia Resina"
-        prompt = """
-        Você é um especialista em logística e materiais odontológicos. 
-        Analise a imagem e extraia os dados para o inventário.
+        # Se não houver contexto dinâmico do banco, usa o padrão de armazém
+        instrucoes_dinamicas = contexto_cliente if contexto_cliente else """
+        Foque em ler etiquetas de armazém, caixas, marcações a caneta ou embalagens industriais.
+        - Se houver etiqueta impressa, extraia a referência exata (ex: F500056).
+        - Se houver lista em papel com 'X' ou marcação, identifique o item assinalado.
+        - Estime a quantidade de fardos ou leia os números escritos à mão.
+        """
 
-        LÓGICA PARA RESINAS DENTAIS (Seringas):
-        - Identifique a posição do ÊMBOLO (a haste que empurra o produto).
-        - Êmbolo totalmente para trás = quantidade: 1.0 (Cheia).
-        - Êmbolo no meio do tubo = quantidade: 0.5 (Metade).
-        - Êmbolo quase no bico = quantidade: 0.1 (Vazia/Final).
-        - Use valores decimais conforme a posição visual.
+        prompt = f"""
+        Você é um especialista em logística e gestão de inventário.
+        Analise a imagem e extraia os dados.
 
-        REGRAS DO JSON:
-        - "referencia": ID/Código ou crie um baseado no nome.
-        - "nome": Nome comercial (ex: 'Resina Charisma A2').
-        - "quantidade": Número (decimal para seringas, inteiro para caixas).
-        - "especificacao": Cor, marca ou detalhes técnicos.
+        CONTEXTO DO CLIENTE:
+        {instrucoes_dinamicas}
 
-        Retorne APENAS o JSON:
-        {"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}
+        REGRAS FIXAS DO JSON (Siga rigorosamente para todos os clientes):
+        - "referencia": ID/Código do produto. Se não houver, crie um código curto baseado no nome.
+        - "nome": Nome principal do produto. EXTREMAMENTE IMPORTANTE: Deve conter NO MÁXIMO 2 PALAVRAS (ex: "Saco Plástico", "Papel Kraft", "Oceano").
+        - "quantidade": Número (inteiro ou decimal).
+        - "especificacao": Detalhes técnicos, peso, marca ou localização. IMPORTANTE: NÃO repita nenhuma informação que já esteja no "nome" ou na "referencia". Use apenas para dados novos/complementares.
+
+        Retorne APENAS um JSON válido no seguinte formato:
+        {{"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}}
         """
         
         response = client.models.generate_content(
@@ -42,10 +43,9 @@ def analisar_imagem(imagem_bytes):
             ]
         )
         
-        # Limpa e converte
-        texto_limpo = response.text.replace('```json', '').replace('```', '').strip()
+        texto_limpo = response.text.replace("```json", "").replace("```", "").strip()
         return json.loads(texto_limpo)
 
     except Exception as e:
-        print(f"Erro na Visão/Gemini: {e}")
+        print(f"Erro no leitor Gemini: {e}")
         return None

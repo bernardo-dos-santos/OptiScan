@@ -146,14 +146,15 @@ def executar_estorno_banco(client_id, planilha_id):
 
     return {'product_id': ref, 'estornado': float(qtd_ia), 'total': novo_total, 'acao_desfeita': tipo}
 
-def buscar_cliente_por_whatsapp(numero_whatsapp):
+def buscar_cliente_por_whatsapp(numero):
     conn = get_conexao()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, planilha_id FROM clientes WHERE whatsapp = %s", (numero_whatsapp,))
-    cliente = cursor.fetchone()
+    cursor.execute("SELECT id, planilha_id, contexto_ia FROM clientes WHERE whatsapp = %s", (numero,))
+    resultado = cursor.fetchone()
+    cursor.close()
     conn.close()
-    if cliente:
-        return {'id': cliente[0], 'planilha_id': cliente[1]}
+    if resultado:
+        return {'id': resultado[0], 'planilha_id': resultado[1], 'contexto_ia': resultado[2]}
     return None
 
 def admin_cadastrar_cliente(nome, whatsapp, planilha_id):
