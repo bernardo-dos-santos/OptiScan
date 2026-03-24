@@ -1,59 +1,50 @@
 import os
 import json
-import requests
 from google import genai
 from google.genai import types
 
-def analisar_imagem(url_imagem):
+def analisar_imagem(imagem_bytes):
     """
-    O Cérebro do Optilog: Baixa a imagem do WhatsApp e pede pro Gemini extrair os dados.
+    O Cérebro do OptiScan: Analisa os bytes da imagem vindos da Meta e identifica
+    o nível de resina dental baseado no êmbolo.
     """
     try:
-      
-        sid = os.getenv('TWILIO_ACCOUNT_SID')
-        token = os.getenv('TWILIO_AUTH_TOKEN')
-        resposta = requests.get(url_imagem, auth=(sid, token))
-        
-        if resposta.status_code != 200:
-            print("Erro ao baixar imagem do Twilio")
-            return None
-        
-        requests.delete(url_imagem, auth=(sid, token))
-
-        # 2. Chamar o Gemini
+        # 1. Configurar Gemini
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        # O Prompt Universal (Depois dinamizar isso por cliente)
+        # 2. Prompt com lógica de "Meia Resina"
         prompt = """
-        Você é um assistente de logística. Analise esta imagem e extraia os dados do produto.
-        REGRAS:
-        - "referencia": O código ou ID do produto.
-        - "nome": NOME CURTO DO PRODUTO (MÁXIMO 2 PALAVRAS). Ex: 'Arroz Branco', 'Óleo Soya'.
-        - "quantidade": Apenas a contagem de itens ou volumes lidos (número).
-        - "especificacao": Detalhes técnicos e medidas (ex: '100% Algodão', '220V', '500g', '2 Litros'). OBS: Não repita a contagem de itens aqui. Peso e volume são especificações, mas a quantidade de fardos/caixas não.
-        
-        Retorne APENAS um JSON:
+        Você é um especialista em logística e materiais odontológicos. 
+        Analise a imagem e extraia os dados para o inventário.
+
+        LÓGICA PARA RESINAS DENTAIS (Seringas):
+        - Identifique a posição do ÊMBOLO (a haste que empurra o produto).
+        - Êmbolo totalmente para trás = quantidade: 1.0 (Cheia).
+        - Êmbolo no meio do tubo = quantidade: 0.5 (Metade).
+        - Êmbolo quase no bico = quantidade: 0.1 (Vazia/Final).
+        - Use valores decimais conforme a posição visual.
+
+        REGRAS DO JSON:
+        - "referencia": ID/Código ou crie um baseado no nome.
+        - "nome": Nome comercial (ex: 'Resina Charisma A2').
+        - "quantidade": Número (decimal para seringas, inteiro para caixas).
+        - "especificacao": Cor, marca ou detalhes técnicos.
+
+        Retorne APENAS o JSON:
         {"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}
         """
         
-        # Chamada usando o padrão do SDK novo
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # Pode usar o flash que é rápido e barato
+            model='gemini-2.5-flash', 
             contents=[
-                types.Part.from_bytes(data=resposta.content, mime_type='image/jpeg'),
+                types.Part.from_bytes(data=imagem_bytes, mime_type='image/jpeg'),
                 prompt
             ]
         )
         
-        # 3. Limpar a resposta e converter para Dicionário
+        # Limpa e converte
         texto_limpo = response.text.replace('```json', '').replace('```', '').strip()
-        dados_json = json.loads(texto_limpo)
-        
-        # Garantir que a chave 'referencia' exista para o banco não quebrar
-        if not dados_json.get('referencia'):
-            dados_json['referencia'] = "ITEM_DESCONHECIDO"
-            
-        return dados_json
+        return json.loads(texto_limpo)
 
     except Exception as e:
         print(f"Erro na Visão/Gemini: {e}")
