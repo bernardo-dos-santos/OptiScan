@@ -41,9 +41,7 @@ def enviar_mensagem_meta(para_numero, texto):
         "text": {"body": texto}
     }
     try:
-        # Aqui está a mágica do debug
         resposta = requests.post(url, headers=headers, json=data)
-        print(f"▶️ Tentando enviar para: {para_numero}", flush=True)
         print(f"▶️ Status Meta: {resposta.status_code} | Resposta: {resposta.text}", flush=True)
     except Exception as e:
         print(f"❌ Erro fatal ao conectar na Meta: {e}", flush=True)
@@ -59,7 +57,7 @@ def baixar_imagem_meta(media_id):
         res_file = requests.get(url_download, headers=headers)
         return res_file.content if res_file.status_code == 200 else None
     except Exception as e:
-        print(f"Erro no download da imagem: {e}")
+        print(f"Erro no download da imagem: {e}", flush=True)
         return None
 
 # --- SEGURANÇA ---
@@ -101,11 +99,6 @@ def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook_meta():
-
-    mensagem = value['messages'][0]
-    telefone_remetente = mensagem['from']
-    print(f"📩 Mensagem recebida de: {telefone_remetente}", flush=True) # ADICIONE ESTA LINHA
-    
     if request.method == 'GET':
         mode = request.args.get('hub.mode')
         token = request.args.get('hub.verify_token')
@@ -113,8 +106,6 @@ def webhook_meta():
         if mode == 'subscribe' and token == VERIFY_TOKEN:
             return challenge, 200
         return 'Token invalido', 403
-    
-    
             
     elif request.method == 'POST':
         signature = request.headers.get('X-Hub-Signature-256')
@@ -125,10 +116,13 @@ def webhook_meta():
         if body and body.get('object') == 'whatsapp_business_account':
             for entry in body.get('entry', []):
                 for change in entry.get('changes', []):
-                    value = change.get('value', {})
-                    if 'messages' in value:
-                        mensagem = value['messages'][0]
+                    # CORREÇÃO CRÍTICA AQUI: Nome da variável alterado para evitar erro de alocação de memória (UnboundLocalError)
+                    dados_meta = change.get('value', {})
+                    
+                    if 'messages' in dados_meta:
+                        mensagem = dados_meta['messages'][0]
                         telefone_remetente = mensagem['from']
+                        print(f"📩 Mensagem recebida de: {telefone_remetente}", flush=True)
                         
                         # --- TRATAMENTO DE IMAGEM ---
                         if mensagem['type'] == 'image':
@@ -248,18 +242,12 @@ def webhook_meta():
 
 @app.route("/webhook_planilha", methods=['POST'])
 def webhook_planilha():
-    token_recebido = request.headers.get('x-api-key')
-    if token_recebido != os.getenv('WEBHOOK_SECRET'):
+    if request.headers.get('x-api-key') != os.getenv('WEBHOOK_SECRET'):
         return "Não autorizado", 403
-
     dados = request.json
     if not dados: return "Sem dados", 400
-        
-    client_id, ref, nova_qtd = dados.get('client_id'), dados.get('referencia'), dados.get('quantidade')
-    if not all([client_id, ref, nova_qtd is not None]): return "Dados incompletos", 400
-        
     try:
-        atualizar_estoque_via_webhook(client_id, str(ref), float(nova_qtd))
+        atualizar_estoque_via_webhook(dados.get('client_id'), str(dados.get('referencia')), float(dados.get('quantidade')))
         return "Atualizado no banco", 200
     except Exception as e:
         return str(e), 500
@@ -267,11 +255,8 @@ def webhook_planilha():
 @app.route('/alerta-planilha', methods=['POST'])
 def alerta_planilha():
     dados = request.json
-    produto, quantidade = dados.get('produto'), dados.get('quantidade')
-    enviar_mensagem_meta(ADMIN_NUMBER, f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{produto}* atingiu {quantidade} unidades devido a uma movimentação na planilha.")
+    enviar_mensagem_meta(ADMIN_NUMBER, f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{dados.get('produto')}* atingiu {dados.get('quantidade')} unidades.")
     return jsonify({"status": "Alerta enviado"}), 200
-
-# --- DESPERTADOR (RELATÓRIOS) ---
 
 def enviar_resumo_turno():
     conn = get_conexao()
@@ -296,10 +281,7 @@ def enviar_resumo_turno():
 
     for whatsapp, itens in alertas_por_cliente.items():
         lista_itens = "\n\n".join(itens)
-        mensagem = (f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\n"
-                    f"Os seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\n"
-                    f"Total a repor: {len(itens)}")
-        enviar_mensagem_meta(whatsapp, mensagem)
+        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\nOs seguintes itens atingiram o nível crítico:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
 scheduler.add_job(enviar_resumo_turno, 'cron', hour='8,13,18', minute='0')
