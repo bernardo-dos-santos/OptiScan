@@ -1,6 +1,7 @@
 import os
 from google import genai
 from services.banco import get_conexao
+from services.meta import enviar_mensagem_meta  # <-- Importação limpa e no topo do arquivo
 
 def rodar_analise_preditiva():
     """Lê o histórico de 30 dias e define o estoque mínimo ideal usando IA"""
@@ -72,7 +73,7 @@ def rodar_analise_preditiva():
                             f"Analisei o consumo dos últimos 30 dias de *{nome_produto}*.\n"
                             f"Sugiro que ajuste o Estoque Mínimo na sua planilha para *{novo_minimo}* para evitar rupturas.")
                 
-                from app import enviar_mensagem_meta # Importação local para evitar erro circular
+                # A chamada agora usa a função direto do services/meta
                 enviar_mensagem_meta(whatsapp_cliente, mensagem)
                 
             print(f"Produto {product_id} | Sugestão: {novo_minimo} enviada.")
