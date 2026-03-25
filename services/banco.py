@@ -160,11 +160,7 @@ def buscar_cliente_por_whatsapp(numero):
 def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
     conn = get_conexao()
     cursor = conn.cursor()
-    try:
-        # Garante o formato internacional
-        if not whatsapp.startswith('+'):
-            whatsapp = '+' + whatsapp
-            
+    try:           
         cursor.execute("""
             INSERT INTO clientes (nome, whatsapp, planilha_id, contexto_ia) 
             VALUES (%s, %s, %s, %s)

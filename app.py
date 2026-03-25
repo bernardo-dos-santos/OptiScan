@@ -225,19 +225,7 @@ def webhook_meta():
                                     link_planilha = f"https://docs.google.com/spreadsheets/d/{planilha_nova}/edit"
                                     
                                     # Nova Mensagem de Boas-Vindas
-                                    msg_boas_vindas = (
-                                        f"Olá! Seu sistema *OptiScan* já está configurado e pronto para uso. 📦🤖\n\n"
-                                        f"A inteligência artificial agora gerencia seu estoque por aqui.\n\n"
-                                        f"🟢 *Entradas:* Mande a foto da etiqueta com legenda se necessário ou digite `entrada [produto] [quantidade]`.\n"
-                                        f"🔴 *Saídas:* Mande a foto e escreva 'saiu X' na legenda, ou digite `saida [produto] [quantidade]`.\n"
-                                        f"📋 *Resumo:* Digite `estoque` para receber um relatório rápido aqui no chat.\n\n"
-                                        f"📊 Acesse o seu *Painel Completo* em tempo real clicando no link abaixo:\n"
-                                        f"🔗 {link_planilha}\n\n"
-                                        f"💡 *Dica:* O seu painel possui uma coluna de *Estoque Mínimo*. Preencha os valores lá, e o OptiScan te avisará automaticamente se algo estiver acabando!"
-                                    )
-                                    
-                                    # Envia as instruções e o link pro WhatsApp do cliente
-                                    enviar_mensagem_meta(numero_novo, msg_boas_vindas)
+                                    enviar_template_meta(numero_novo, "boas_vindas_optiscan", link_planilha)                                 
                                 else:
                                     enviar_mensagem_meta(telefone_remetente, "❌ Falha ao gravar no banco de dados.")
                                 return 'OK', 200
