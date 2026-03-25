@@ -21,6 +21,7 @@ from services.sheets import (
     consultar_estoque_geral, buscar_produto_por_nome_ou_id
     
 )
+from services.uteis import formatar_br
 
 load_dotenv()
 app = Flask(__name__)
@@ -125,7 +126,7 @@ def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id
                f"📦 *Produto:* {nome_prod}\n"
                f"🔧 *Spec:* {espec}\n"
                f"🔢 *Ref:* {log['product_id']}\n"
-               f"📊 *Estoque Atual:* {log['total']}\n\n"
+               f"📊 *Estoque Atual:* {formatar_br(log['total'])}\n\n"
                f"Para reverter, digite 'Corrigir'")
                
         enviar_mensagem_meta(numero_usuario, msg)
@@ -293,7 +294,7 @@ def webhook_meta():
                                 resultado = executar_estorno_banco(client_id, planilha_id)
                                 if resultado:
                                     acao = "Removidas" if resultado['acao_desfeita'] == 'ENTRADA' else "Adicionadas"
-                                    enviar_mensagem_meta(telefone_remetente, f"🔄 *Estornado com sucesso!*\n\n📦 Ref: {resultado['product_id']}\n⚖️ {resultado['estornado']} unidades {acao}.\n📊 Novo Saldo: {resultado['total']}")
+                                    enviar_mensagem_meta(telefone_remetente, f"🔄 *Estornado com sucesso!*\n\n📦 Ref: {resultado['product_id']}\n⚖️ {formatar_br(resultado['estornado'])} unidades {acao}.\n📊 Novo Saldo: {formatar_br(resultado['total'])}")
                                 else:
                                     enviar_mensagem_meta(telefone_remetente, "❌ Nenhum registro recente para desfazer.")
                                 return 'OK', 200
@@ -340,7 +341,7 @@ def webhook_meta():
                                     atualizar_sheets(dados_manuais, log['total'], planilha_id)
                                                   
                                     acao = "Adicionadas" if tipo_op == 'ENTRADA' else "Removidas"
-                                    enviar_mensagem_meta(telefone_remetente, f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {qtd} unidades {acao}.\n📊 Novo Saldo: {log['total']}")
+                                    enviar_mensagem_meta(telefone_remetente, f"✅ *{tipo_op.capitalize()} Manual Registrada!*\n\n📦 Ref: {log['product_id']}\n⚖️ {formatar_br(qtd)} unidades {acao}.\n📊 Novo Saldo: {formatar_br(log['total'])}")
                                 else:
                                     enviar_mensagem_meta(telefone_remetente, "❌ Use: `entrada/saida [NOME OU ID] [QTD]`")
                                 return 'OK', 200
@@ -388,7 +389,7 @@ def webhook_planilha():
 @app.route('/alerta-planilha', methods=['POST'])
 def alerta_planilha():
     dados = request.json
-    enviar_mensagem_meta(ADMIN_NUMBER, f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{dados.get('produto')}* atingiu {dados.get('quantidade')} unidades.")
+    enviar_mensagem_meta(ADMIN_NUMBER, f"⚠️ *ALERTA DE ESTOQUE BAIXO*\n\nO produto *{dados.get('produto')}* atingiu {formatar_br(dados.get('quantidade'))} unidades.")
     return jsonify({"status": "Alerta enviado"}), 200
 
 def enviar_resumo_turno():
@@ -410,11 +411,11 @@ def enviar_resumo_turno():
     alertas_por_cliente = {}
     for whatsapp, product_id, nome, qtd, minimo in itens_criticos:
         if whatsapp not in alertas_por_cliente: alertas_por_cliente[whatsapp] = []
-        alertas_por_cliente[whatsapp].append(f"🔹 *{nome}* (ID: {product_id})\n   Restam: {qtd} | Mín.: {minimo}")
+        alertas_por_cliente[whatsapp].append(f"🔹 *{nome}* (ID: {product_id})\n   Restam: {formatar_br(qtd)} | Mín.: {formatar_br(minimo)}")
 
     for whatsapp, itens in alertas_por_cliente.items():
         lista_itens = "\n\n".join(itens)
-        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\nOs seguintes itens atingiram o nível crítico hoje:\n\n{lista_itens}\n\nTotal a repor: {len(itens)}")
+        enviar_mensagem_meta(whatsapp, f"⚠️ *OPTISCAN - RESUMO DE ESTOQUE* ⚠️\n\nOs seguintes itens atingiram o nível crítico hoje:\n\n{lista_itens}\n\nTotal a repor: {formatar_br(len(itens))}")
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
 scheduler.add_job(enviar_resumo_turno, 'cron', hour='18', minute='0')

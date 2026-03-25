@@ -3,6 +3,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 
+from services.uteis import formatar_br
+
 def _obter_cliente_gspread():
     caminho_absoluto = os.path.abspath('chave_nova.json')
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -80,7 +82,7 @@ def consultar_estoque_geral(planilha_id):
             # Índices: B=1 (Nome), C=2 (Ref), D=3 (Qtd), E=4 (Espec)
             qtd = float(linha[3])
             if qtd > 0:  # Lista apenas o que tem saldo
-                msg += f"🔹 *{linha[1]}* ({linha[2]})\n   Qtd: {linha[3]} | {linha[4]}\n\n"
+                msg += f"🔹 *{linha[1]}* ({linha[2]})\n   Qtd: {formatar_br(linha[3])} | {linha[4]}\n\n"
         except (ValueError, IndexError):
             continue
             
