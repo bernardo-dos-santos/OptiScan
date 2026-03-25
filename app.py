@@ -110,19 +110,26 @@ def validar_assinatura_meta(payload, signature):
 def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id, contexto_ia="", legenda=""):
     try:
         dados_extraidos = analisar_imagem(img_data, contexto_cliente=contexto_ia, legenda=legenda)
-     
         
         if not dados_extraidos or dados_extraidos.get('referencia') == 'ITEM_DESCONHECIDO':
             enviar_mensagem_meta(numero_usuario, "❌ Não consegui ler os dados do produto nesta foto. Tente um ângulo melhor.")
             return
 
-        log = salvar_no_banco(dados_extraidos, client_id, planilha_id)
+        # 1. IDENTIFICA SE É ENTRADA OU SAÍDA PELA LEGENDA
+        legenda_lower = legenda.lower()
+        tipo_op = 'SAIDA' if any(p in legenda_lower for p in ['saiu', 'saida', 'saída', 'menos', 'tirar']) else 'ENTRADA'
+
+        # 2. SALVA COM O TIPO CORRETO
+        log = salvar_no_banco(dados_extraidos, client_id, planilha_id, tipo_operacao=tipo_op)
         atualizar_sheets(dados_extraidos, log['total'], planilha_id)
         
         nome_prod = dados_extraidos.get('nome', 'Produto')
         espec = dados_extraidos.get('especificacao', 'N/A')
         
-        msg = (f"✅ *Entrada Registrada!*\n\n"
+        # 3. MUDA O TÍTULO DA MENSAGEM DINAMICAMENTE
+        titulo_msg = "Entrada Registrada" if tipo_op == 'ENTRADA' else "Saída Registrada"
+        
+        msg = (f"✅ *{titulo_msg}!*\n\n"
                f"📦 *Produto:* {nome_prod}\n"
                f"🔧 *Spec:* {espec}\n"
                f"🔢 *Ref:* {log['product_id']}\n"

@@ -43,12 +43,13 @@ def atualizar_sheets(dados, total_banco, planilha_id):
         valores_linha[3] = total_banco # Coluna D (Quantidade)
         if espec_recebida: 
             valores_linha[5] = espec_recebida # Coluna F (Especificação)
-        valores_linha[6] = "✅ Pelo Zap" # Coluna G (Status)
+        valores_linha[6] = "✅ Atualizado  " # Coluna G (Status)
         
-        aba.update(f"A{linha}:G{linha}", [valores_linha])
+        # ...
+        aba.update(f"A{linha}:G{linha}", [valores_linha], value_input_option="USER_ENTERED")
     else:
-        # Nova linha: A(Data), B(Nome), C(Ref), D(Qtd), E(Minimo vazio), F(Espec), G(Status)
-        aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo via Zap"])
+        # Nova linha
+        aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo "], value_input_option="USER_ENTERED")
 def verificar_alerta_minimo(planilha_id, referencia):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1
@@ -79,10 +80,15 @@ def consultar_estoque_geral(planilha_id):
     # Pula a linha 1 (cabeçalhos)
     for linha in dados[1:]:
         try:
-            # Índices: B=1 (Nome), C=2 (Ref), D=3 (Qtd), E=4 (Espec)
-            qtd = float(linha[3])
-            if qtd > 0:  # Lista apenas o que tem saldo
-                msg += f"🔹 *{linha[1]}* ({linha[2]})\n   Qtd: {formatar_br(linha[3])} | {linha[4]}\n\n"
+            # Pega a string (ex: "2.000,50"), tira o ponto de milhar e troca vírgula por ponto
+            qtd_str = str(linha[3]).strip().replace('.', '').replace(',', '.')
+            if not qtd_str: 
+                continue
+                
+            qtd = float(qtd_str)
+            if qtd > 0:
+                # Usa o formatar_br para exibir bonito no Zap
+                msg += f"🔹 *{linha[1]}* ({linha[2]})\n   Qtd: {formatar_br(qtd)} | Mín: {linha[4]}\n\n"
         except (ValueError, IndexError):
             continue
             
