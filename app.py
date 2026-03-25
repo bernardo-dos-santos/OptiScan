@@ -133,6 +133,10 @@ def processar_imagem_background(img_data, numero_usuario, client_id, planilha_id
     except Exception as e:
         enviar_mensagem_meta(numero_usuario, f"⚠️ Erro interno no sistema de IA: {str(e)}")
 
+# --- WEBHOOK INICIAL (RENDER) ---
+@app.route('/')
+def home():
+    return "OptiScan Online", 200
 # --- WEBHOOK PRINCIPAL (WHATSAPP) ---
 
 @app.route('/webhook', methods=['GET', 'POST'])
@@ -196,17 +200,43 @@ def webhook_meta():
                                     enviar_mensagem_meta(telefone_remetente, "⛔ Comando restrito a administradores.")
                                     return 'OK', 200
                                 
-                                partes = corpo_mensagem_original.split()
-                                if len(partes) != 4:
-                                    enviar_mensagem_meta(telefone_remetente, "❌ Formato incorreto. Use: !cadastrar 554999999999 NomeEmpresa ID_PLANILHA")
+                                # Divide em no máximo 5 partes para não quebrar o texto do contexto da IA
+                                partes = corpo_mensagem_original.split(" ", 4)
+                                
+                                if len(partes) < 4:
+                                    enviar_mensagem_meta(telefone_remetente, "❌ Formato incorreto. Use: !cadastrar 554999999999 NomeEmpresa ID_PLANILHA [Contexto IA opcional]")
                                     return 'OK', 200
                                 
-                                _, numero_novo, nome_empresa, planilha_nova = partes
-                                sucesso = admin_cadastrar_cliente(nome_empresa, numero_novo, planilha_nova)
+                                numero_novo = partes[1]
+                                nome_empresa = partes[2]
+                                planilha_nova = partes[3]
+                                
+                                # Pega o contexto se ele existir (índice 4), senão deixa vazio
+                                contexto_ia = partes[4] if len(partes) == 5 else ""
+                                
+                                # Chama a função que salva no banco (agora com o contexto_ia)
+                                sucesso = admin_cadastrar_cliente(nome_empresa, numero_novo, planilha_nova, contexto_ia)
                             
                                 if sucesso:
-                                    enviar_mensagem_meta(telefone_remetente, f"✅ Cliente {nome_empresa} salvo no banco com sucesso!")
-                                    enviar_template_meta(numero_novo, "boas_vindas_optiscan", nome_empresa)
+                                    enviar_mensagem_meta(telefone_remetente, f"✅ Cliente {nome_empresa} salvo com sucesso!")
+                                    
+                                    # Monta o link automático da planilha do cliente
+                                    link_planilha = f"https://docs.google.com/spreadsheets/d/{planilha_nova}/edit"
+                                    
+                                    # Nova Mensagem de Boas-Vindas
+                                    msg_boas_vindas = (
+                                        f"Olá! Seu sistema *OptiScan* já está configurado e pronto para uso. 📦🤖\n\n"
+                                        f"A inteligência artificial agora gerencia seu estoque por aqui.\n\n"
+                                        f"🟢 *Entradas:* Mande a foto da etiqueta com legenda se necessário ou digite `entrada [produto] [quantidade]`.\n"
+                                        f"🔴 *Saídas:* Mande a foto e escreva 'saiu X' na legenda, ou digite `saida [produto] [quantidade]`.\n"
+                                        f"📋 *Resumo:* Digite `estoque` para receber um relatório rápido aqui no chat.\n\n"
+                                        f"📊 Acesse o seu *Painel Completo* em tempo real clicando no link abaixo:\n"
+                                        f"🔗 {link_planilha}\n\n"
+                                        f"💡 *Dica:* O seu painel possui uma coluna de *Estoque Mínimo*. Preencha os valores lá, e o OptiScan te avisará automaticamente se algo estiver acabando!"
+                                    )
+                                    
+                                    # Envia as instruções e o link pro WhatsApp do cliente
+                                    enviar_mensagem_meta(numero_novo, msg_boas_vindas)
                                 else:
                                     enviar_mensagem_meta(telefone_remetente, "❌ Falha ao gravar no banco de dados.")
                                 return 'OK', 200
@@ -334,17 +364,27 @@ def webhook_meta():
 
 # --- ROTAS DE PLANILHA E ALERTAS ---
 
-@app.route("/webhook_planilha", methods=['POST'])
+@app.route('/webhook_planilha', methods=['POST'])
 def webhook_planilha():
-    if request.headers.get('x-api-key') != os.getenv('WEBHOOK_SECRET'):
-        return "Não autorizado", 403
     dados = request.json
-    if not dados: return "Sem dados", 400
-    try:
-        atualizar_estoque_via_webhook(dados.get('client_id'), str(dados.get('referencia')), float(dados.get('quantidade')))
-        return "Atualizado no banco", 200
-    except Exception as e:
-        return str(e), 500
+    sheet_id = dados.get('sheet_id')
+    ref = dados.get('referencia')
+    qtd = dados.get('quantidade')
+    estoque_minimo = dados.get('estoque_minimo', 0) # LINHA NOVA
+
+    conn = get_conexao()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM clientes WHERE planilha_id = %s", (sheet_id,))
+    resultado = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if resultado:
+        client_id = resultado[0]
+        # Adicione o estoque_minimo na chamada da função abaixo:
+        atualizar_estoque_via_webhook(client_id, ref, qtd, estoque_minimo) 
+        return jsonify({"status": "sucesso"}), 200
+    return jsonify({"status": "cliente_nao_encontrado"}), 404
     
 @app.route('/alerta-planilha', methods=['POST'])
 def alerta_planilha():
@@ -379,7 +419,7 @@ def enviar_resumo_turno():
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('America/Sao_Paulo'))
 scheduler.add_job(enviar_resumo_turno, 'cron', hour='18', minute='0')
-scheduler.add_job(func=rodar_analise_preditiva, trigger="cron", day_of_week='sun', hour=3, minute=0)
+scheduler.add_job(rodar_analise_preditiva, 'cron', day_of_week='mon', hour=9, minute=0)
 scheduler.start()
 
 if __name__ == "__main__":

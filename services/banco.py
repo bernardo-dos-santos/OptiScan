@@ -157,7 +157,7 @@ def buscar_cliente_por_whatsapp(numero):
         return {'id': resultado[0], 'planilha_id': resultado[1], 'contexto_ia': resultado[2]}
     return None
 
-def admin_cadastrar_cliente(nome, whatsapp, planilha_id):
+def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
     conn = get_conexao()
     cursor = conn.cursor()
     try:
@@ -166,11 +166,14 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id):
             whatsapp = '+' + whatsapp
             
         cursor.execute("""
-            INSERT INTO clientes (nome, whatsapp, planilha_id) 
-            VALUES (%s, %s, %s)
-            ON CONFLICT (whatsapp) DO UPDATE SET nome = EXCLUDED.nome, planilha_id = EXCLUDED.planilha_id
+            INSERT INTO clientes (nome, whatsapp, planilha_id, contexto_ia) 
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (whatsapp) DO UPDATE 
+            SET nome = EXCLUDED.nome, 
+                planilha_id = EXCLUDED.planilha_id,
+                contexto_ia = EXCLUDED.contexto_ia
             RETURNING id;
-        """, (nome, whatsapp, planilha_id))
+        """, (nome, whatsapp, planilha_id, contexto_ia))
         
         novo_id = cursor.fetchone()[0]
         conn.commit()
@@ -182,23 +185,27 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id):
         cursor.close()
         conn.close()
 
-def atualizar_estoque_via_webhook(client_id, ref, nova_qtd):
+def atualizar_estoque_via_webhook(client_id, ref, nova_qtd, novo_minimo=0):
     conn = get_conexao()
     cursor = conn.cursor()
     
-    # Ajuste Fuso
     agora = datetime.utcnow() - timedelta(hours=3)
     
     cursor.execute("SELECT id FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     existe = cursor.fetchone()
     
     if existe:
-        cursor.execute("UPDATE estoque SET quantity = %s, ultima_atualizacao = %s WHERE product_id = %s AND client_id = %s", (nova_qtd, agora, ref, client_id))
+        cursor.execute("""
+            UPDATE estoque 
+            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s 
+            WHERE product_id = %s AND client_id = %s
+        """, (nova_qtd, novo_minimo, agora, ref, client_id))
     else:
-        cursor.execute("INSERT INTO estoque (client_id, product_id, quantity, peso, ultima_atualizacao) VALUES (%s, %s, %s, 0, %s)", (client_id, ref, nova_qtd, agora))
+        cursor.execute("""
+            INSERT INTO estoque (client_id, product_id, quantity, estoque_minimo, ultima_atualizacao) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (client_id, ref, nova_qtd, novo_minimo, agora))
         
-    cursor.execute("INSERT INTO historico (client_id, product_id, quantidade, tipo, data) VALUES (%s, %s, %s, 'AJUSTE_PLANILHA', %s)", (client_id, ref, nova_qtd, agora))
-    
     conn.commit()
     cursor.close()
     conn.close()

@@ -55,16 +55,30 @@ def rodar_analise_preditiva():
             
             novo_minimo = int(response.text.strip().replace('.', '').replace(',', ''))
             
+            # Busca WhatsApp do cliente e Nome do Produto
             cursor.execute("""
-                UPDATE estoque 
-                SET estoque_minimo = %s 
-                WHERE client_id = %s AND product_id = %s
-            """, (novo_minimo, client_id, product_id))
+                SELECT c.whatsapp, e.nome 
+                FROM clientes c 
+                JOIN estoque e ON c.id = e.client_id 
+                WHERE c.id = %s AND e.product_id = %s
+            """, (client_id, product_id))
             
-            print(f"Produto {product_id} | Novo Mínimo: {novo_minimo}")
+            dados_cli = cursor.fetchone()
+            
+            if dados_cli:
+                whatsapp_cliente, nome_produto = dados_cli
+                
+                mensagem = (f"💡 *Dica do OptiScan:*\n"
+                            f"Analisei o consumo dos últimos 30 dias de *{nome_produto}*.\n"
+                            f"Sugiro que ajuste o Estoque Mínimo na sua planilha para *{novo_minimo}* para evitar rupturas.")
+                
+                from app import enviar_mensagem_meta # Importação local para evitar erro circular
+                enviar_mensagem_meta(whatsapp_cliente, mensagem)
+                
+            print(f"Produto {product_id} | Sugestão: {novo_minimo} enviada.")
             
         except Exception as e:
-            print(f"Falha na IA para o produto {product_id}: {e}")
+            print(f"Erro na análise de {product_id}: {e}")
 
     conn.commit()
     cursor.close()
