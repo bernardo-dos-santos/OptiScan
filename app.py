@@ -370,7 +370,7 @@ def webhook_planilha():
     sheet_id = dados.get('sheet_id')
     ref = dados.get('referencia')
     qtd = dados.get('quantidade')
-    estoque_minimo = dados.get('estoque_minimo', 0) # LINHA NOVA
+    estoque_minimo = dados.get('estoque_minimo', 0) 
 
     conn = get_conexao()
     cursor = conn.cursor()
@@ -381,7 +381,6 @@ def webhook_planilha():
 
     if resultado:
         client_id = resultado[0]
-        # Adicione o estoque_minimo na chamada da função abaixo:
         atualizar_estoque_via_webhook(client_id, ref, qtd, estoque_minimo) 
         return jsonify({"status": "sucesso"}), 200
     return jsonify({"status": "cliente_nao_encontrado"}), 404

@@ -13,11 +13,10 @@ def atualizar_sheets(dados, total_banco, planilha_id):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1
     
-    # Ajuste Fuso
-    data_hora = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
+    # 1. DATA FORMATADA (Apenas dia/mês/ano)
+    data_hora = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y")
 
     ref_limpa = str(dados.get('referencia', 'N/A')).upper()
-    # Pega os dados sem forçar um valor padrão imediato
     nome_recebido = dados.get('nome')
     espec_recebida = dados.get('especificacao')
 
@@ -28,23 +27,26 @@ def atualizar_sheets(dados, total_banco, planilha_id):
 
     if celula:
         linha = celula.row
-        # Atualiza SEMPRE a Data e a Quantidade
-        aba.update_acell(f'A{linha}', data_hora)
-        aba.update_acell(f'D{linha}', str(total_banco))
+        # Lê a linha atual para não apagar o Estoque Mínimo (Coluna E)
+        valores_linha = aba.row_values(linha)
         
-        # Só atualiza Nome e Especificação se a IA os capturou (evita apagar no estorno/manual)
-        if nome_recebido:
-            aba.update_acell(f'B{linha}', str(nome_recebido))
-        if espec_recebida:
-            aba.update_acell(f'E{linha}', str(espec_recebida))
+        # Garante que a lista tenha 7 posições para evitar erros de índice
+        while len(valores_linha) < 7: 
+            valores_linha.append("")
+            
+        # Atualiza apenas o que importa:
+        valores_linha[0] = data_hora # Coluna A (Data)
+        if nome_recebido and nome_recebido != "PRODUTO DESCONHECIDO": 
+            valores_linha[1] = nome_recebido # Coluna B (Nome)
+        valores_linha[3] = total_banco # Coluna D (Quantidade)
+        if espec_recebida: 
+            valores_linha[5] = espec_recebida # Coluna F (Especificação)
+        valores_linha[6] = "✅ Pelo Zap" # Coluna G (Status)
+        
+        aba.update(f"A{linha}:G{linha}", [valores_linha])
     else:
-        # Se for uma linha nova, aplica o valor padrão caso algum campo venha vazio
-        nome_final = str(nome_recebido if nome_recebido else 'Produto Sem Nome')
-        espec_final = str(espec_recebida if espec_recebida else 'N/A')
-        
-        nova_linha = [data_hora, nome_final, ref_limpa, total_banco, espec_final]
-        aba.append_row(nova_linha)
-
+        # Nova linha: A(Data), B(Nome), C(Ref), D(Qtd), E(Minimo vazio), F(Espec), G(Status)
+        aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo via Zap"])
 def verificar_alerta_minimo(planilha_id, referencia):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1

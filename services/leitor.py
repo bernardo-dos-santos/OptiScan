@@ -35,7 +35,7 @@ def analisar_imagem(imagem_bytes, contexto_cliente="", legenda=""):
         - "referencia": ID/Código do produto. Se não houver, crie um código curto baseado no nome.
         - "nome": Nome principal do produto (MÁXIMO 2 PALAVRAS).
         - "quantidade": Número (inteiro ou decimal).
-        - "especificacao": Detalhes técnicos, peso, marca ou localização. NÃO repita informação do "nome" ou "referencia".
+        - "especificacao": Detalhes técnicos, peso ou marca. Seja extremamente conciso (MÁXIMO DE 4 PALAVRAS). NÃO repita informação do "nome" ou "referencia".
 
         Retorne APENAS um JSON válido no formato:
         {{"referencia": "...", "nome": "...", "quantidade": ..., "especificacao": "..."}}
