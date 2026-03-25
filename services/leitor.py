@@ -18,8 +18,11 @@ def analisar_imagem(imagem_bytes, contexto_cliente="", legenda=""):
 
         # Regra de ouro para a matemática da legenda
         bloco_legenda = f"""
-        ATENÇÃO MÁXIMA - O UTILIZADOR ENVIOU ESTA LEGENDA JUNTO COM A FOTO: "{legenda}"
-        Se a legenda contiver quantidades, fardos, caixas ou multiplicadores (ex: '30 fardos de 4000', 'entraram 5', 'x10'), a tua PRIORIDADE ABSOLUTA é fazer o cálculo matemático e colocar o RESULTADO TOTAL no campo "quantidade". A foto servirá apenas para extrair a Referência e o Nome.
+        ATENÇÃO MÁXIMA - LEGENDA DO USUÁRIO: "{legenda}"
+        Se a legenda contiver multiplicadores como "fardos", "caixas" ou "x" (ex: "30 fardos"):
+        1. Encontre a quantidade unitária descrita na etiqueta ou embalagem na FOTO (ex: QTD 3000).
+        2. Multiplique o número da legenda pela quantidade unitária encontrada na foto.
+        3. A sua PRIORIDADE ABSOLUTA é colocar o RESULTADO TOTAL DESSA MULTIPLICAÇÃO no campo "quantidade".
         """ if legenda else ""
 
         prompt = f"""
