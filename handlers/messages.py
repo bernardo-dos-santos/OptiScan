@@ -119,3 +119,4 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
 
     # Fallback
     enviar_mensagem_meta(telefone_remetente, "👋 OptiScan Online. Envie uma foto da etiqueta, digite 'estoque' ou use comandos manuais.")
+    

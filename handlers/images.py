@@ -1,6 +1,6 @@
 import threading
 from services.meta import enviar_mensagem_meta, baixar_imagem_meta
-from services.leitor import analisar_imagem
+from services.leitor import analisar_imagem, analisar_pdf_nf
 from services.banco import salvar_no_banco
 from services.sheets import atualizar_sheets
 from services.uteis import formatar_br
@@ -50,3 +50,37 @@ def tratar_fluxo_imagem(media_id, telefone_remetente, cliente, legenda):
 
     except Exception as e:
         enviar_mensagem_meta(telefone_remetente, f"⚠️ Erro interno no sistema de IA: {str(e)}")
+
+def tratar_fluxo_pdf(media_id, telefone_remetente, cliente):
+    enviar_mensagem_meta(telefone_remetente, "📄 PDF da Nota Fiscal recebido. Extraindo itens (isso pode levar alguns segundos)...")
+    
+    # A sua função de imagem serve perfeitamente para baixar o PDF da Meta
+    pdf_data = baixar_imagem_meta(media_id) 
+    
+    if not pdf_data:
+        enviar_mensagem_meta(telefone_remetente, "❌ Falha ao baixar o arquivo PDF.")
+        return
+
+    client_id = cliente['id']
+    planilha_id = cliente['planilha_id']
+
+    try:
+        lista_produtos = analisar_pdf_nf(pdf_data)
+        
+        if not lista_produtos or len(lista_produtos) == 0:
+            enviar_mensagem_meta(telefone_remetente, "❌ Não consegui encontrar produtos válidos nessa Nota Fiscal.")
+            return
+
+        sucessos = 0
+        for prod in lista_produtos:
+            # Para nota fiscal, a operação é sempre ENTRADA
+            log = salvar_no_banco(prod, client_id, planilha_id, tipo_operacao='ENTRADA')
+            if 'erro' not in log:
+                atualizar_sheets(prod, log['total'], planilha_id)
+                sucessos += 1
+        
+        enviar_mensagem_meta(telefone_remetente, f"✅ *Nota Fiscal Processada!*\n📦 {sucessos} itens da NF foram adicionados ao estoque com sucesso.")
+        
+    except Exception as e:
+        print(f"Erro ao tratar PDF: {e}")
+        enviar_mensagem_meta(telefone_remetente, "❌ Ocorreu um erro interno ao processar a Nota Fiscal.")

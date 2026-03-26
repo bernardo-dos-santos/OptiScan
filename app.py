@@ -10,7 +10,7 @@ from services.banco import get_conexao, buscar_cliente_por_whatsapp, atualizar_e
 from services.analista import rodar_analise_preditiva
 from services.uteis import formatar_br
 from handlers.messages import tratar_comando_texto
-from handlers.images import tratar_fluxo_imagem
+from handlers.images import tratar_fluxo_imagem, tratar_fluxo_pdf
 
 load_dotenv()
 app = Flask(__name__)
@@ -172,8 +172,28 @@ def webhook_meta():
                                     target=tratar_fluxo_imagem, 
                                     args=(media_id, telefone_remetente, cliente, legenda)
                                 ).start()
+
+                            elif tipo == 'document':
+                                if not cliente:
+                                    enviar_mensagem_meta(telefone_remetente, "❌ Número não registrado no sistema OptiScan.")
+                                    return 'OK', 200
                                 
-                            elif tipo not in ['image', 'text']:
+                                doc_info = mensagem['document']
+                                mime_type = doc_info.get('mime_type', '')
+                                
+                                if 'pdf' not in mime_type:
+                                    enviar_mensagem_meta(telefone_remetente, "⚠️ Por favor, envie a Nota Fiscal em formato PDF.")
+                                    return 'OK', 200
+                                    
+                                media_id = doc_info['id']
+                                
+                                threading.Thread(
+                                    target=tratar_fluxo_pdf, 
+                                    args=(media_id, telefone_remetente, cliente)
+                                ).start()
+
+                                
+                            elif tipo not in ['image', 'text', 'document']:
                                 enviar_mensagem_meta(telefone_remetente, "🤖 Ops! Apenas texto ou fotos da etiqueta.")
             except Exception as e:
                 print(f"Erro no parse do webhook: {e}", flush=True)
