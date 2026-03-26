@@ -181,7 +181,7 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
         cursor.close()
         conn.close()
 
-def atualizar_estoque_via_webhook(client_id, ref, nova_qtd, novo_minimo=0):
+def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0): 
     conn = get_conexao()
     cursor = conn.cursor()
     
@@ -193,14 +193,14 @@ def atualizar_estoque_via_webhook(client_id, ref, nova_qtd, novo_minimo=0):
     if existe:
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s 
+            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s 
             WHERE product_id = %s AND client_id = %s
-        """, (nova_qtd, novo_minimo, agora, ref, client_id))
+        """, (nova_qtd, novo_minimo, agora, nome, ref, client_id)) 
     else:
         cursor.execute("""
-            INSERT INTO estoque (client_id, product_id, quantity, estoque_minimo, ultima_atualizacao) 
-            VALUES (%s, %s, %s, %s, %s)
-        """, (client_id, ref, nova_qtd, novo_minimo, agora))
+            INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, ultima_atualizacao) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (client_id, ref, nome, nova_qtd, novo_minimo, agora)) 
         
     conn.commit()
     cursor.close()

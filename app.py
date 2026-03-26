@@ -59,6 +59,7 @@ def webhook_planilha():
     dados = request.json
     sheet_id = dados.get('sheet_id')
     ref = dados.get('referencia')
+    nome = dados.get('nome', 'Sem Nome') # <-- RECEBENDO O NOME
     qtd = dados.get('quantidade')
     estoque_minimo = dados.get('estoque_minimo', 0) 
 
@@ -71,7 +72,7 @@ def webhook_planilha():
 
     if resultado:
         client_id = resultado[0]
-        atualizar_estoque_via_webhook(client_id, ref, qtd, estoque_minimo) 
+        atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo) # <-- PASSANDO O NOME
         return jsonify({"status": "sucesso"}), 200
     return jsonify({"status": "cliente_nao_encontrado"}), 404
     
