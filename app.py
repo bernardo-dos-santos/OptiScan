@@ -75,6 +75,32 @@ def webhook_planilha():
         atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo) # <-- PASSANDO O NOME
         return jsonify({"status": "sucesso"}), 200
     return jsonify({"status": "cliente_nao_encontrado"}), 404
+
+@app.route('/webhook_excluir', methods=['POST'])
+def webhook_excluir():
+    dados = request.json
+    sheet_id = dados.get('sheet_id')
+    ref = dados.get('referencia')
+
+    conn = get_conexao()
+    cursor = conn.cursor()
+    
+    # Descobre quem é o cliente dono dessa planilha
+    cursor.execute("SELECT id FROM clientes WHERE planilha_id = %s", (sheet_id,))
+    resultado = cursor.fetchone()
+
+    if resultado:
+        client_id = resultado[0]
+        # Deleta permanentemente o produto do banco de dados deste cliente
+        cursor.execute("DELETE FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "sucesso"}), 200
+
+    cursor.close()
+    conn.close()
+    return jsonify({"status": "cliente_nao_encontrado"}), 404
     
 @app.route('/alerta-planilha', methods=['POST'])
 def alerta_planilha():
