@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from services.meta import validar_assinatura_meta, enviar_mensagem_meta
-from services.banco import get_conexao, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook
+from services.banco import get_conexao, buscar_cliente_por_whatsapp, atualizar_estoque_via_webhook, sincronizacao_geral_banco
 from services.analista import rodar_analise_preditiva
 from services.uteis import formatar_br
 from handlers.messages import tratar_comando_texto
