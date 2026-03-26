@@ -59,9 +59,10 @@ def webhook_planilha():
     dados = request.json
     sheet_id = dados.get('sheet_id')
     ref = dados.get('referencia')
-    nome = dados.get('nome', 'Sem Nome') # <-- RECEBENDO O NOME
+    nome = dados.get('nome', 'Sem Nome')
+    especificacao = dados.get('especificacao', '') # <-- RECEBE A ESPECIFICAÇÃO
     qtd = dados.get('quantidade')
-    estoque_minimo = dados.get('estoque_minimo', 0) 
+    estoque_minimo = dados.get('estoque_minimo', 0)
 
     conn = get_conexao()
     cursor = conn.cursor()
@@ -72,7 +73,28 @@ def webhook_planilha():
 
     if resultado:
         client_id = resultado[0]
-        atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo) # <-- PASSANDO O NOME
+        # Adicione o parâmetro especificacao aqui na chamada:
+        atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo, especificacao) 
+        return jsonify({"status": "sucesso"}), 200
+    return jsonify({"status": "cliente_nao_encontrado"}), 404
+
+
+@app.route('/webhook_sincronizacao_geral', methods=['POST'])
+def webhook_sincronizacao_geral():
+    dados = request.json
+    sheet_id = dados.get('sheet_id')
+    produtos = dados.get('produtos', [])
+
+    conn = get_conexao()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM clientes WHERE planilha_id = %s", (sheet_id,))
+    resultado = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if resultado:
+        client_id = resultado[0]
+        sincronizacao_geral_banco(client_id, produtos)
         return jsonify({"status": "sucesso"}), 200
     return jsonify({"status": "cliente_nao_encontrado"}), 404
 

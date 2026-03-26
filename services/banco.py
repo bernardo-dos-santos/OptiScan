@@ -181,10 +181,9 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
         cursor.close()
         conn.close()
 
-def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0): 
+def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0, especificacao=''):
     conn = get_conexao()
     cursor = conn.cursor()
-    
     agora = datetime.utcnow() - timedelta(hours=3)
     
     cursor.execute("SELECT id FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
@@ -193,15 +192,51 @@ def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0)
     if existe:
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s 
+            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
             WHERE product_id = %s AND client_id = %s
-        """, (nova_qtd, novo_minimo, agora, nome, ref, client_id)) 
+        """, (nova_qtd, novo_minimo, agora, nome, especificacao, ref, client_id))
     else:
         cursor.execute("""
-            INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, ultima_atualizacao) 
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (client_id, ref, nome, nova_qtd, novo_minimo, agora)) 
+            INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, ultima_atualizacao) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (client_id, ref, nome, nova_qtd, novo_minimo, especificacao, agora))
         
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+# Adicione essa nova função no final do arquivo banco.py
+def sincronizacao_geral_banco(client_id, produtos):
+    conn = get_conexao()
+    cursor = conn.cursor()
+    agora = datetime.utcnow() - timedelta(hours=3)
+
+    refs_planilha = tuple([p['referencia'] for p in produtos])
+
+    # 1. Apaga tudo do banco que não está mais na planilha
+    if refs_planilha:
+        cursor.execute("DELETE FROM estoque WHERE client_id = %s AND product_id NOT IN %s", (client_id, refs_planilha))
+    else:
+        cursor.execute("DELETE FROM estoque WHERE client_id = %s", (client_id,))
+
+    # 2. Atualiza ou insere (Upsert) cada linha da planilha no banco
+    for p in produtos:
+        cursor.execute("SELECT id FROM estoque WHERE product_id = %s AND client_id = %s", (p['referencia'], client_id))
+        existe = cursor.fetchone()
+        
+        if existe:
+            cursor.execute("""
+                UPDATE estoque
+                SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
+                WHERE product_id = %s AND client_id = %s
+            """, (p['quantidade'], p['estoque_minimo'], agora, p['nome'], p['especificacao'], p['referencia'], client_id))
+        else:
+            cursor.execute("""
+                INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, ultima_atualizacao)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (client_id, p['referencia'], p['nome'], p['quantidade'], p['estoque_minimo'], p['especificacao'], agora))
+
     conn.commit()
     cursor.close()
     conn.close()
