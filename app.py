@@ -63,6 +63,8 @@ def webhook_planilha():
     especificacao = dados.get('especificacao', '') # <-- RECEBE A ESPECIFICAÇÃO
     qtd = dados.get('quantidade')
     estoque_minimo = dados.get('estoque_minimo', 0)
+    custo_unitario = dados.get('custo_unitario', 0.0) # <-- NOVO
+    preco_venda = dados.get('preco_venda', 0.0)       # <-- NOVO
 
     conn = get_conexao()
     cursor = conn.cursor()
@@ -73,8 +75,7 @@ def webhook_planilha():
 
     if resultado:
         client_id = resultado[0]
-        # Adicione o parâmetro especificacao aqui na chamada:
-        atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo, especificacao) 
+        atualizar_estoque_via_webhook(client_id, ref, nome, qtd, estoque_minimo, especificacao, custo_unitario, preco_venda)
         return jsonify({"status": "sucesso"}), 200
     return jsonify({"status": "cliente_nao_encontrado"}), 404
 

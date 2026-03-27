@@ -14,8 +14,6 @@ def get_conexao():
 
 def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     ref = str(dados.get('referencia', 'ITEM_DESCONHECIDO')).upper()
-    
-    # Pega os dados sem forçar padrão ainda
     nome_recebido = dados.get('nome')
     espec_recebida = dados.get('especificacao')
     
@@ -24,78 +22,63 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     except (ValueError, TypeError):
         qtd_movimento = 1.0
         
-    peso_movimento = float(dados.get('peso', 0))
-
     conn = get_conexao()
     cursor = conn.cursor()
-
-    # 1. Busca o saldo E os dados atuais (para não apagar na saída manual)
-    cursor.execute("SELECT quantity, nome, especificacao FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
-    resultado = cursor.fetchone()
-    
-    # --- TRAVA DE SEGURANÇA PARA SAÍDAS ---
-    if tipo_operacao == 'SAIDA':
-        if not resultado:
-            cursor.close()
-            conn.close()
-            return {'erro': f"O produto *{nome_recebido}* não está cadastrado no sistema."}
-        
-        saldo_atual_temp = float(resultado[0])
-        if qtd_movimento > saldo_atual_temp:
-            cursor.close()
-            conn.close()
-            return {'erro': f"Estoque insuficiente. Você tentou retirar {qtd_movimento}, mas só há {saldo_atual_temp} unidades de *{nome_recebido}*."}
-    # --------------------------------------
-     
-    saldo_atual_banco = float(resultado[0]) if resultado else 0.0
-
-    # 2. Calcula novo saldo
-    if tipo_operacao == 'ENTRADA':
-        novo_total = saldo_atual_banco + qtd_movimento
-    else:
-        novo_total = saldo_atual_banco - qtd_movimento
-        if novo_total < 0: novo_total = 0
-
-    # Ajuste de Fuso Horário (UTC-3 Brasil)
     agora = datetime.utcnow() - timedelta(hours=3)
 
-    # 3. Update ou Insert inteligente
+    # 1. Busca o saldo E os dados financeiros (Custo e Preço)
+    cursor.execute("SELECT quantity, nome, especificacao, custo_unitario, preco_venda FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
+    resultado = cursor.fetchone()
+
     if resultado:
-        nome_banco = resultado[1]
-        espec_banco = resultado[2]
+        qtd_atual = float(resultado[0])
+        nome_atual = resultado[1] if resultado[1] else nome_recebido
+        espec_atual = resultado[2] if resultado[2] else espec_recebida
+        custo_unitario = float(resultado[3]) if resultado[3] else 0.0
+        preco_venda = float(resultado[4]) if resultado[4] else 0.0
         
-        nome_final = nome_recebido if nome_recebido else (nome_banco if nome_banco else 'Produto Sem Nome')
-        espec_final = espec_recebida if espec_recebida else (espec_banco if espec_banco else 'N/A')
-        
+        if tipo_operacao == 'ENTRADA':
+            nova_qtd = qtd_atual + qtd_movimento
+            valor_movimento = qtd_movimento * custo_unitario # Despesa
+        else:
+            if qtd_atual < qtd_movimento:
+                return {'erro': f'Estoque insuficiente. Saldo atual: {qtd_atual}'}
+            nova_qtd = qtd_atual - qtd_movimento
+            valor_movimento = qtd_movimento * preco_venda # Faturamento
+
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, peso = %s, nome = %s, especificacao = %s, ultima_atualizacao = %s
+            SET quantity = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
             WHERE product_id = %s AND client_id = %s
-        """, (novo_total, peso_movimento, nome_final, espec_final, agora, ref, client_id))
-    else:
-        nome_final = nome_recebido if nome_recebido else 'Produto Sem Nome'
-        espec_final = espec_recebida if espec_recebida else 'N/A'
-        
-        cursor.execute("""
-            INSERT INTO estoque (client_id, product_id, nome, especificacao, quantity, peso, ultima_atualizacao)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (client_id, ref, nome_final, espec_final, novo_total, peso_movimento, agora))
+        """, (nova_qtd, agora, nome_atual, espec_atual, ref, client_id))
 
-    # 4. Histórico
+    else:
+        if tipo_operacao == 'SAIDA':
+            return {'erro': 'Produto não existe no estoque para saída.'}
+        
+        nova_qtd = qtd_movimento
+        nome_atual = nome_recebido if nome_recebido else "Item Novo"
+        espec_atual = espec_recebida if espec_recebida else ""
+        custo_unitario = 0.0
+        preco_venda = 0.0
+        valor_movimento = 0.0 # Sem cadastro prévio, o valor inicial é zero
+
+        cursor.execute("""
+            INSERT INTO estoque (client_id, product_id, nome, quantity, especificacao, ultima_atualizacao, custo_unitario, preco_venda) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (client_id, ref, nome_atual, nova_qtd, espec_atual, agora, custo_unitario, preco_venda))
+
+    # 2. Inserção no histórico com a conversão financeira
     cursor.execute("""
-        INSERT INTO historico (client_id, product_id, quantidade, tipo, data)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (client_id, ref, qtd_movimento, tipo_operacao, agora))
+        INSERT INTO historico (client_id, product_id, quantidade, tipo, data, valor_total) 
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (client_id, ref, qtd_movimento, tipo_operacao, agora, valor_movimento))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    return {
-        'product_id': ref,
-        'total': novo_total,
-        'qtd_movimentada': qtd_movimento
-    }
+    return {'status': 'sucesso', 'product_id': ref, 'total': nova_qtd}
 
 def executar_estorno_banco(client_id, planilha_id):
     conn = get_conexao()
@@ -146,42 +129,58 @@ def executar_estorno_banco(client_id, planilha_id):
 
     return {'product_id': ref, 'estornado': float(qtd_ia), 'total': novo_total, 'acao_desfeita': tipo}
 
-def buscar_cliente_por_whatsapp(numero):
+def buscar_cliente_por_whatsapp(telefone):
     conn = get_conexao()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, planilha_id, contexto_ia FROM clientes WHERE whatsapp = %s", (numero,))
+    cursor.execute("""
+        SELECT c.id, c.nome_empresa, c.planilha_id, c.contexto_ia 
+        FROM clientes c
+        JOIN numeros_autorizados n ON c.id = n.client_id
+        WHERE n.telefone = %s
+    """, (telefone,))
     resultado = cursor.fetchone()
     cursor.close()
     conn.close()
+
     if resultado:
-        return {'id': resultado[0], 'planilha_id': resultado[1], 'contexto_ia': resultado[2]}
+        return {
+            'id': resultado[0],
+            'nome_empresa': resultado[1],
+            'planilha_id': resultado[2],
+            'contexto_ia': resultado[3]
+        }
     return None
 
 def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
     conn = get_conexao()
     cursor = conn.cursor()
     try:           
+        # 1. Cria a empresa
         cursor.execute("""
-            INSERT INTO clientes (nome, whatsapp, planilha_id, contexto_ia) 
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (whatsapp) DO UPDATE 
-            SET nome = EXCLUDED.nome, 
-                planilha_id = EXCLUDED.planilha_id,
-                contexto_ia = EXCLUDED.contexto_ia
+            INSERT INTO clientes (nome, planilha_id, contexto_ia) 
+            VALUES (%s, %s, %s)
             RETURNING id;
-        """, (nome, whatsapp, planilha_id, contexto_ia))
-        
+        """, (nome, planilha_id, contexto_ia))
         novo_id = cursor.fetchone()[0]
+        
+        # 2. Associa o telefone principal a esta empresa
+        cursor.execute("""
+            INSERT INTO numeros_autorizados (telefone, client_id) 
+            VALUES (%s, %s)
+            ON CONFLICT (telefone) DO NOTHING;
+        """, (whatsapp, novo_id))
+        
         conn.commit()
         return novo_id
     except Exception as e:
         print(f"Erro ao cadastrar cliente: {e}")
+        conn.rollback()
         return None
     finally:
         cursor.close()
         conn.close()
 
-def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0, especificacao=''):
+def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0, especificacao='', custo=0.0, preco=0.0):
     conn = get_conexao()
     cursor = conn.cursor()
     agora = datetime.utcnow() - timedelta(hours=3)
@@ -192,14 +191,14 @@ def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0,
     if existe:
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
+            SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s, custo_unitario = %s, preco_venda = %s
             WHERE product_id = %s AND client_id = %s
-        """, (nova_qtd, novo_minimo, agora, nome, especificacao, ref, client_id))
+        """, (nova_qtd, novo_minimo, agora, nome, especificacao, custo, preco, ref, client_id))
     else:
         cursor.execute("""
-            INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, ultima_atualizacao) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (client_id, ref, nome, nova_qtd, novo_minimo, especificacao, agora))
+            INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, custo_unitario, preco_venda, ultima_atualizacao) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (client_id, ref, nome, nova_qtd, novo_minimo, especificacao, custo, preco, agora))
         
     conn.commit()
     cursor.close()
@@ -222,21 +221,93 @@ def sincronizacao_geral_banco(client_id, produtos):
 
     # 2. Atualiza ou insere (Upsert) cada linha da planilha no banco
     for p in produtos:
+        custo = p.get('custo_unitario', 0.0)
+        preco = p.get('preco_venda', 0.0)
+        
         cursor.execute("SELECT id FROM estoque WHERE product_id = %s AND client_id = %s", (p['referencia'], client_id))
         existe = cursor.fetchone()
         
         if existe:
             cursor.execute("""
                 UPDATE estoque
-                SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
+                SET quantity = %s, estoque_minimo = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s, custo_unitario = %s, preco_venda = %s
                 WHERE product_id = %s AND client_id = %s
-            """, (p['quantidade'], p['estoque_minimo'], agora, p['nome'], p['especificacao'], p['referencia'], client_id))
+            """, (p['quantidade'], p['estoque_minimo'], agora, p['nome'], p['especificacao'], custo, preco, p['referencia'], client_id))
         else:
             cursor.execute("""
-                INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, ultima_atualizacao)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (client_id, p['referencia'], p['nome'], p['quantidade'], p['estoque_minimo'], p['especificacao'], agora))
-
+                INSERT INTO estoque (client_id, product_id, nome, quantity, estoque_minimo, especificacao, custo_unitario, preco_venda, ultima_atualizacao)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (client_id, p['referencia'], p['nome'], p['quantidade'], p['estoque_minimo'], p['especificacao'], custo, preco, agora))
     conn.commit()
     cursor.close()
     conn.close()
+
+def gerar_relatorio_financeiro(client_id):
+    conn = get_conexao()
+    cursor = conn.cursor()
+    
+    # Faturamento (Saídas) do mês atual
+    cursor.execute("""
+        SELECT COALESCE(SUM(valor_total), 0) FROM historico 
+        WHERE client_id = %s AND tipo = 'SAIDA' 
+        AND EXTRACT(MONTH FROM data) = EXTRACT(MONTH FROM CURRENT_DATE)
+        AND EXTRACT(YEAR FROM data) = EXTRACT(YEAR FROM CURRENT_DATE)
+    """, (client_id,))
+    faturamento = cursor.fetchone()[0]
+
+    # Custos (Entradas) do mês atual
+    cursor.execute("""
+        SELECT COALESCE(SUM(valor_total), 0) FROM historico 
+        WHERE client_id = %s AND tipo = 'ENTRADA' 
+        AND EXTRACT(MONTH FROM data) = EXTRACT(MONTH FROM CURRENT_DATE)
+        AND EXTRACT(YEAR FROM data) = EXTRACT(YEAR FROM CURRENT_DATE)
+    """, (client_id,))
+    custos = cursor.fetchone()[0]
+    
+    cursor.close()
+    conn.close()
+    return float(faturamento), float(custos)
+
+def admin_listar_clientes():
+    """Retorna uma lista de todos os clientes com seus IDs."""
+    conn = get_conexao()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, nome FROM clientes ORDER BY id")
+    resultados = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not resultados:
+        return "Nenhum cliente cadastrado no sistema."
+
+    msg = "🏢 *Empresas Cadastradas:*\n\n"
+    for row in resultados:
+        msg += f"ID: *{row[0]}* - {row[1]}\n"
+    return msg
+
+def admin_adicionar_numero_por_id(novo_numero, client_id):
+    """Vincula um novo número de WhatsApp direto ao ID da empresa."""
+    conn = get_conexao()
+    cursor = conn.cursor()
+    try:
+        # Verifica se o ID da empresa realmente existe
+        cursor.execute("SELECT id FROM clientes WHERE id = %s", (client_id,))
+        if not cursor.fetchone():
+            return False
+
+        # Adiciona o número
+        cursor.execute("""
+            INSERT INTO numeros_autorizados (telefone, client_id)
+            VALUES (%s, %s)
+            ON CONFLICT (telefone) DO NOTHING;
+        """, (novo_numero, client_id))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erro ao adicionar número via ID: {e}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()

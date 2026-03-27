@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from services.meta import enviar_mensagem_meta, enviar_template_meta
-from services.banco import get_conexao, executar_estorno_banco, salvar_no_banco, admin_cadastrar_cliente
+from services.banco import gerar_relatorio_financeiro, get_conexao, executar_estorno_banco, salvar_no_banco, admin_cadastrar_cliente
 from services.sheets import consultar_estoque_geral, buscar_produto_por_nome_ou_id, atualizar_sheets
 from services.uteis import formatar_br, tratar_numero_brasileiro
 
@@ -68,6 +68,21 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
             enviar_mensagem_meta(telefone_remetente, f"🔄 *Estornado com sucesso!*\n\n📦 Ref: {resultado['product_id']}\n⚖️ {formatar_br(resultado['estornado'])} unidades {acao}.\n📊 Novo Saldo: {formatar_br(resultado['total'])}")
         else:
             enviar_mensagem_meta(telefone_remetente, "❌ Nenhum registro recente para desfazer.")
+        return
+    
+    if corpo_mensagem == "!financeiro":
+        faturamento, custos = gerar_relatorio_financeiro(client_id)
+        lucro_bruto = faturamento - custos
+        
+        msg_fin = (
+            "📊 *Resumo Financeiro (Mês Atual)* 📊\n\n"
+            f"📈 *Faturamento (Saídas):* R$ {faturamento:,.2f}\n"
+            f"📉 *Custos de Reposição (Entradas):* R$ {custos:,.2f}\n"
+            "------------------------\n"
+            f"💰 *Resultado Operacional:* R$ {lucro_bruto:,.2f}"
+        )
+        msg_fin = msg_fin.replace(',', 'X').replace('.', ',').replace('X', '.') # Ajuste de pontuação BR
+        enviar_mensagem_meta(telefone_remetente, msg_fin)
         return
 
     if corpo_mensagem in ["estoque", "estóque"]:
