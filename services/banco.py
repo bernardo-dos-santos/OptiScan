@@ -18,12 +18,15 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     nome_recebido = dados.get('nome')
     espec_recebida = dados.get('especificacao')
     
+    # ---> ESTA É A LINHA QUE FALTAVA <---
+    custo_recebido = float(dados.get('custo_unitario', 0.0)) 
+    
     try:
-        
+        from services.uteis import tratar_numero_brasileiro
         qtd_movimento = tratar_numero_brasileiro(dados.get('quantidade', 1))
     except Exception:
         qtd_movimento = 1.0
-        
+
     conn = get_conexao()
     cursor = conn.cursor()
     agora = datetime.utcnow() - timedelta(hours=3)
@@ -36,23 +39,25 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
         qtd_atual = float(resultado[0])
         nome_atual = resultado[1] if resultado[1] else nome_recebido
         espec_atual = resultado[2] if resultado[2] else espec_recebida
-        custo_unitario = float(resultado[3]) if resultado[3] else 0.0
+        
+        # Se a nota fiscal trouxe um custo novo, atualiza. Se não, mantém o que já estava.
+        custo_unitario = custo_recebido if custo_recebido > 0 else float(resultado[3])
         preco_venda = float(resultado[4]) if resultado[4] else 0.0
         
         if tipo_operacao == 'ENTRADA':
             nova_qtd = qtd_atual + qtd_movimento
-            valor_movimento = qtd_movimento * custo_unitario # Despesa
+            valor_movimento = qtd_movimento * custo_unitario # Registra Despesa
         else:
             if qtd_atual < qtd_movimento:
                 return {'erro': f'Estoque insuficiente. Saldo atual: {qtd_atual}'}
             nova_qtd = qtd_atual - qtd_movimento
-            valor_movimento = qtd_movimento * preco_venda # Faturamento
+            valor_movimento = qtd_movimento * preco_venda # Registra Faturamento
 
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s
+            SET quantity = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s, custo_unitario = %s
             WHERE product_id = %s AND client_id = %s
-        """, (nova_qtd, agora, nome_atual, espec_atual, ref, client_id))
+        """, (nova_qtd, agora, nome_atual, espec_atual, custo_unitario, ref, client_id))
 
     else:
         if tipo_operacao == 'SAIDA':
@@ -61,9 +66,9 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
         nova_qtd = qtd_movimento
         nome_atual = nome_recebido if nome_recebido else "Item Novo"
         espec_atual = espec_recebida if espec_recebida else ""
-        custo_unitario = 0.0
+        custo_unitario = custo_recebido
         preco_venda = 0.0
-        valor_movimento = 0.0 # Sem cadastro prévio, o valor inicial é zero
+        valor_movimento = qtd_movimento * custo_unitario
 
         cursor.execute("""
             INSERT INTO estoque (client_id, product_id, nome, quantity, especificacao, ultima_atualizacao, custo_unitario, preco_venda) 

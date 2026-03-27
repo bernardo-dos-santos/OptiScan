@@ -65,25 +65,24 @@ def analisar_pdf_nf(pdf_bytes):
     try:
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        prompt = prompt = """
+        prompt = """
         Você é um sistema de ERP inteligente. Extraia todos os produtos contidos nesta Nota Fiscal em PDF.
         IGNORE frete, impostos e dados das empresas. Foque na tabela de PRODUTOS.
         
         Siga estas regras de ouro de formatação:
         
-        1. NOME CURTO: Crie um nome simples e curtíssimo para o produto, que seja fácil de ler e buscar. O campo "nome" NUNCA deve conter números de medidas, espessuras ou siglas técnicas (IMP, AA/CPG, etc).
-        
-        2. ESPECIFICAÇÃO COMPLETA: Pegue TODAS as informações técnicas — incluindo medidas completas (ex: 30X42+4), espessura (ex: 0,08), tipo de impressão, cores, ou qualquer sigla técnica — e jogue tudo no campo "especificacao".
-        
-        3. REGRA DE QUANTIDADE: Retorne o valor como NÚMERO PURO. Se na nota estiver escrito "30.500", retorne 30500. Use ponto apenas para casas decimais (ex: 10.5).
+        1. NOME CURTO: Crie um nome simples e curtíssimo para o produto, que seja fácil de ler. NUNCA coloque medidas no nome.
+        2. ESPECIFICAÇÃO COMPLETA: Pegue TODAS as informações técnicas e medidas e jogue no campo "especificacao".
+        3. REGRA DE QUANTIDADE: Retorne o valor como NÚMERO PURO (ex: 30500). Use ponto apenas para decimais.
+        4. CUSTO UNITÁRIO: Extraia o valor unitário de compra do produto na nota. Retorne como número decimal com ponto (ex: 15.90).
         
         ### EXEMPLO DO QUE FAZER:
-        Nome na Nota: SACO PP IMP DADRI 30X42+4X0,08 AA/CPG
-        Você retorna: {"nome": "SACO PP DADRI", "especificacao": "IMP 30X42+4X0,08 AA/CPG"}
+        Nome na Nota: SACO PP IMP DADRI 30X42+4X0,08 AA/CPG | Vlr. Unit: 2,45
+        Você retorna: {"nome": "SACO PP DADRI", "especificacao": "IMP 30X42+4X0,08 AA/CPG", "custo_unitario": 2.45}
         
         Retorne um ARRAY DE JSON válido com esta estrutura:
         [
-          {"referencia": "codigo_na_nota", "nome": "nome do produto curtíssimo", "quantidade": 10.5, "especificacao": "detalhe e medidas completas (ex: 30X42+4X0,08, kg)"}
+          {"referencia": "codigo", "nome": "nome curto", "quantidade": 10.5, "especificacao": "detalhes", "custo_unitario": 2.45}
         ]
         
         Se não houver código, crie um curto (ex: PA-NOME).
