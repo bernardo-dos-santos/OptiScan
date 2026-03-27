@@ -2,6 +2,7 @@ import os
 import psycopg2
 from datetime import datetime, timedelta
 from services.sheets import atualizar_sheets
+from services.uteis import tratar_numero_brasileiro
 
 def get_conexao():
     return psycopg2.connect(
@@ -18,8 +19,9 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     espec_recebida = dados.get('especificacao')
     
     try:
-        qtd_movimento = float(dados.get('quantidade', 1))
-    except (ValueError, TypeError):
+        
+        qtd_movimento = tratar_numero_brasileiro(dados.get('quantidade', 1))
+    except Exception:
         qtd_movimento = 1.0
         
     conn = get_conexao()
@@ -145,7 +147,7 @@ def buscar_cliente_por_whatsapp(telefone):
     if resultado:
         return {
             'id': resultado[0],
-            'nome_empresa': resultado[1],
+            'nome_empresa': resultado[1], 
             'planilha_id': resultado[2],
             'contexto_ia': resultado[3]
         }
