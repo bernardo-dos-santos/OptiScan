@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from services.meta import enviar_mensagem_meta, enviar_template_meta
-from services.banco import gerar_relatorio_financeiro, get_conexao, executar_estorno_banco, salvar_no_banco, admin_cadastrar_cliente
+from services.banco import admin_adicionar_numero_por_id, admin_listar_clientes, gerar_relatorio_financeiro, get_conexao, executar_estorno_banco, salvar_no_banco, admin_cadastrar_cliente
 from services.sheets import consultar_estoque_geral, buscar_produto_por_nome_ou_id, atualizar_sheets
 from services.uteis import formatar_br, tratar_numero_brasileiro
 
@@ -56,6 +56,53 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
             msg_status += f"\n⏱️ Servidor: {agora}\n✅ Webhook Meta: Ativo\n"
             enviar_mensagem_meta(telefone_remetente, msg_status)
             return
+        elif corpo_mensagem == '!lista':
+            msg_lista = admin_listar_clientes()
+            enviar_mensagem_meta(telefone_remetente, msg_lista)
+            return
+            
+            # COMANDO: !add
+        elif corpo_mensagem.startswith('!add '):
+            partes = corpo_mensagem_original.split(" ")
+            if len(partes) < 3:
+                enviar_mensagem_meta(telefone_remetente, "❌ Formato: !add <NUMERO_NOVO> <ID_EMPRESA>")
+                return
+                
+            novo_numero = partes[1]
+            try:
+                id_empresa = int(partes[2])
+            except ValueError:
+                enviar_mensagem_meta(telefone_remetente, "❌ O ID da empresa precisa ser um número.")
+                return
+                
+            sucesso = admin_adicionar_numero_por_id(novo_numero, id_empresa)
+            
+            if sucesso:
+                enviar_mensagem_meta(telefone_remetente, f"✅ Número {novo_numero} vinculado à empresa ID {id_empresa} com sucesso!")
+            else:
+                enviar_mensagem_meta(telefone_remetente, "❌ Erro: Empresa não encontrada no banco de dados.")
+            return
+        
+    # 2. COMANDOS DO CLIENTE (Dono ou Estoquista acessam)
+
+    if not cliente:
+        enviar_mensagem_meta(telefone_remetente, "❌ Número não registrado no sistema OptiScan.")
+        return
+
+    if corpo_mensagem == "#financeiro":
+        faturamento, custos = gerar_relatorio_financeiro(client_id)
+        lucro_bruto = faturamento - custos
+        
+        msg_fin = (
+            "📊 *Resumo Financeiro (Mês Atual)* 📊\n\n"
+            f"📈 *Faturamento (Saídas):* R$ {faturamento:,.2f}\n"
+            f"📉 *Custos de Reposição (Entradas):* R$ {custos:,.2f}\n"
+            "------------------------\n"
+            f"💰 *Resultado Operacional:* R$ {lucro_bruto:,.2f}"
+        )
+        msg_fin = msg_fin.replace(',', 'X').replace('.', ',').replace('X', '.') 
+        enviar_mensagem_meta(telefone_remetente, msg_fin)
+        return
 
     # 2. COMANDOS DE USUÁRIO
     client_id = cliente['id']
