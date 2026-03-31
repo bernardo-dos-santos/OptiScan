@@ -52,34 +52,40 @@ def tratar_fluxo_imagem(media_id, telefone_remetente, cliente, legenda):
         enviar_mensagem_meta(telefone_remetente, f"⚠️ Erro interno no sistema de IA: {str(e)}")
 
 def tratar_fluxo_pdf(media_id, telefone_remetente, cliente):
-    enviar_mensagem_meta(telefone_remetente, "📄 PDF da Nota Fiscal recebido. Extraindo itens (isso pode levar alguns segundos)...")
+    enviar_mensagem_meta(telefone_remetente, "📄 PDF da Nota Fiscal recebido. A Inteligência Artificial está analisando os emissores e produtos...")
     
-    # A sua função de imagem serve perfeitamente para baixar o PDF da Meta
     pdf_data = baixar_imagem_meta(media_id) 
-    
     if not pdf_data:
         enviar_mensagem_meta(telefone_remetente, "❌ Falha ao baixar o arquivo PDF.")
         return
 
     client_id = cliente['id']
     planilha_id = cliente['planilha_id']
+    cnpj_cliente = cliente.get('cnpj')
+
+    if not cnpj_cliente:
+        enviar_mensagem_meta(telefone_remetente, "⚠️ O CNPJ da sua empresa não está cadastrado. Peça ao administrador para atualizar seu cadastro para processar PDFs.")
+        return
 
     try:
-        lista_produtos = analisar_pdf_nf(pdf_data)
+        resultado_ia = analisar_pdf_nf(pdf_data, cnpj_cliente)
         
-        if not lista_produtos or len(lista_produtos) == 0:
+        if not resultado_ia or 'produtos' not in resultado_ia or len(resultado_ia['produtos']) == 0:
             enviar_mensagem_meta(telefone_remetente, "❌ Não consegui encontrar produtos válidos nessa Nota Fiscal.")
             return
 
+        tipo_op = resultado_ia['tipo_operacao']
+        lista_produtos = resultado_ia['produtos']
+
         sucessos = 0
         for prod in lista_produtos:
-            # Para nota fiscal, a operação é sempre ENTRADA
-            log = salvar_no_banco(prod, client_id, planilha_id, tipo_operacao='ENTRADA')
+            log = salvar_no_banco(prod, client_id, planilha_id, tipo_operacao=tipo_op)
             if 'erro' not in log:
                 atualizar_sheets(prod, log['total'], planilha_id)
                 sucessos += 1
         
-        enviar_mensagem_meta(telefone_remetente, f"✅ *Nota Fiscal Processada!*\n📦 {sucessos} itens da NF foram adicionados ao estoque com sucesso.")
+        acao_texto = "adicionados ao" if tipo_op == 'ENTRADA' else "baixados do"
+        enviar_mensagem_meta(telefone_remetente, f"✅ *Operação Identificada: {tipo_op}*\n📦 {sucessos} itens da NF foram {acao_texto} estoque com sucesso.")
         
     except Exception as e:
         print(f"Erro ao tratar PDF: {e}")

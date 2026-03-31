@@ -60,41 +60,42 @@ def analisar_imagem(imagem_bytes, contexto_cliente="", legenda=""):
         print(f"Erro no leitor Gemini: {e}")
         return None
     
-def analisar_pdf_nf(pdf_bytes):
-    """Lê um PDF de Nota Fiscal e retorna uma lista (Array) de produtos."""
+def analisar_pdf_nf(pdf_bytes, cnpj_cliente):
+    """Lê um PDF, identifica se é compra ou venda via CNPJ, e extrai os itens."""
     try:
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
-        prompt = """
-        Você é um sistema de ERP inteligente. Extraia todos os produtos contidos nesta Nota Fiscal em PDF.
-        IGNORE frete, impostos e dados das empresas. Foque na tabela de PRODUTOS.
+        prompt = f"""
+        Você é um sistema de ERP inteligente processando uma Nota Fiscal brasileira em PDF.
+        A empresa dona deste sistema tem o CNPJ: {cnpj_cliente}
         
-        Siga estas regras de ouro de formatação:
+        Sua primeira tarefa é descobrir a NATUREZA DA OPERAÇÃO usando APENAS esta regra lógica infalível:
+        - Se o CNPJ {cnpj_cliente} estiver no campo DESTINATÁRIO, a empresa está comprando. Defina "tipo_operacao": "ENTRADA".
+        - Se o CNPJ {cnpj_cliente} estiver no campo EMITENTE, a empresa está vendendo. Defina "tipo_operacao": "SAIDA".
         
-        1. NOME CURTO: Crie um nome simples e curtíssimo para o produto, que seja fácil de ler. NUNCA coloque medidas no nome.
-        2. ESPECIFICAÇÃO COMPLETA: Pegue TODAS as informações técnicas e medidas e jogue no campo "especificacao".
-        3. REGRA DE QUANTIDADE: Retorne o valor como NÚMERO PURO (ex: 30500). Use ponto apenas para decimais.
-        4. CUSTO UNITÁRIO: Extraia o valor unitário de compra do produto na nota. Retorne como número decimal com ponto (ex: 15.90).
-        
-        ### EXEMPLO DO QUE FAZER:
-        Nome na Nota: SACO PP IMP DADRI 30X42+4X0,08 AA/CPG | Vlr. Unit: 2,45
-        Você retorna: {"nome": "SACO PP DADRI", "especificacao": "IMP 30X42+4X0,08 AA/CPG", "custo_unitario": 2.45}
-        
-        Retorne um ARRAY DE JSON válido com esta estrutura:
-        [
-          {"referencia": "codigo", "nome": "nome curto", "quantidade": 10.5, "especificacao": "detalhes", "custo_unitario": 2.45}
-        ]
-        
-        Se não houver código, crie um curto (ex: PA-NOME).
-        Retorne APENAS o JSON.
+        Sua segunda tarefa é extrair os produtos. Siga estas regras:
+        1. NOME CURTO: Nome simples sem medidas.
+        2. ESPECIFICACAO: Todas as medidas e detalhes técnicos.
+        3. QUANTIDADE: Apenas número (use ponto para decimais).
+        4. VALOR FINANCEIRO:
+           - Se a operação for ENTRADA, extraia o valor unitário e chame de "custo_unitario".
+           - Se a operação for SAIDA, extraia o valor unitário e chame de "preco_venda".
+        # Adicionar esta regra no prompt do Gemini:
+        5. UNIDADES DE MEDIDA E MATEMÁTICA: Preste muita atenção na coluna UNID. Se o produto for vendido em "MI" (Milheiro), "CX" (Caixa) ou "FD" (Fardo), a sua missão é retornar a quantidade física total (Ex: 3 MI = 3000 unidades) E o custo estritamente unitário de CADA PEÇA (Valor Total da Linha dividido pela Quantidade Física Total). A matemática de 'quantidade * custo_unitario' DEVE bater com o valor total da nota.
+
+           
+        Retorne APENAS um JSON válido nesta exata estrutura:
+        {{
+            "tipo_operacao": "ENTRADA",
+            "produtos": [
+                {{"referencia": "codigo", "nome": "SACO PP", "quantidade": 10.5, "especificacao": "30X42", "custo_unitario": 2.45}}
+            ]
+        }}
         """
         
         response = client.models.generate_content(
             model='gemini-2.5-flash', 
-            contents=[
-                types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'),
-                prompt
-            ]
+            contents=[types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'), prompt]
         )
         
         texto_limpo = response.text.replace('```json', '').replace('```', '').strip()
@@ -102,4 +103,4 @@ def analisar_pdf_nf(pdf_bytes):
         
     except Exception as e:
         print(f"Erro no Gemini ao ler PDF: {e}")
-        return []
+        return None

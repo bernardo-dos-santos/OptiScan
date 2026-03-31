@@ -140,7 +140,7 @@ def buscar_cliente_por_whatsapp(telefone):
     conn = get_conexao()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT c.id, c.nome, c.planilha_id, c.contexto_ia 
+        SELECT c.id, c.nome, c.planilha_id, c.contexto_ia, c.cnpj 
         FROM clientes c
         JOIN numeros_autorizados n ON c.id = n.client_id
         WHERE n.telefone = %s
@@ -154,7 +154,8 @@ def buscar_cliente_por_whatsapp(telefone):
             'id': resultado[0],
             'nome_empresa': resultado[1], 
             'planilha_id': resultado[2],
-            'contexto_ia': resultado[3]
+            'contexto_ia': resultado[3],
+            'cnpj': resultado[4] 
         }
     return None
 
