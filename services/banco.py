@@ -18,8 +18,9 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     nome_recebido = dados.get('nome')
     espec_recebida = dados.get('especificacao')
     
-    # ---> ESTA É A LINHA QUE FALTAVA <---
+    # Pegando custo E preço que vêm da IA
     custo_recebido = float(dados.get('custo_unitario', 0.0)) 
+    preco_recebido = float(dados.get('preco_venda', 0.0)) 
     
     try:
         from services.uteis import tratar_numero_brasileiro
@@ -30,8 +31,9 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     conn = get_conexao()
     cursor = conn.cursor()
     agora = datetime.utcnow() - timedelta(hours=3)
+    aviso_venda = False # Flag para avisar o WhatsApp
 
-    # 1. Busca o saldo E os dados financeiros (Custo e Preço)
+    # 1. Busca o saldo E os dados financeiros
     cursor.execute("SELECT quantity, nome, especificacao, custo_unitario, preco_venda FROM estoque WHERE product_id = %s AND client_id = %s", (ref, client_id))
     resultado = cursor.fetchone()
 
@@ -40,42 +42,50 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
         nome_atual = resultado[1] if resultado[1] else nome_recebido
         espec_atual = resultado[2] if resultado[2] else espec_recebida
         
-        # Se a nota fiscal trouxe um custo novo, atualiza. Se não, mantém o que já estava.
+
         custo_unitario = custo_recebido if custo_recebido > 0 else float(resultado[3])
-        preco_venda = float(resultado[4]) if resultado[4] else 0.0
+        preco_venda = preco_recebido if preco_recebido > 0 else (float(resultado[4]) if resultado[4] else 0.0)
         
         if tipo_operacao == 'ENTRADA':
             nova_qtd = qtd_atual + qtd_movimento
-            valor_movimento = qtd_movimento * custo_unitario # Registra Despesa
+            valor_movimento = qtd_movimento * custo_unitario
         else:
-            if qtd_atual < qtd_movimento:
-                return {'erro': f'Estoque insuficiente. Saldo atual: {qtd_atual}'}
+
             nova_qtd = qtd_atual - qtd_movimento
-            valor_movimento = qtd_movimento * preco_venda # Registra Faturamento
+            valor_movimento = qtd_movimento * preco_venda
+
+            if nova_qtd < 0 and qtd_atual >= 0:
+                aviso_venda = True 
+
 
         cursor.execute("""
             UPDATE estoque 
-            SET quantity = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s, custo_unitario = %s
+            SET quantity = %s, ultima_atualizacao = %s, nome = %s, especificacao = %s, custo_unitario = %s, preco_venda = %s
             WHERE product_id = %s AND client_id = %s
-        """, (nova_qtd, agora, nome_atual, espec_atual, custo_unitario, ref, client_id))
+        """, (nova_qtd, agora, nome_atual, espec_atual, custo_unitario, preco_venda, ref, client_id))
 
     else:
-        if tipo_operacao == 'SAIDA':
-            return {'erro': 'Produto não existe no estoque para saída.'}
-        
-        nova_qtd = qtd_movimento
+
         nome_atual = nome_recebido if nome_recebido else "Item Novo"
         espec_atual = espec_recebida if espec_recebida else ""
         custo_unitario = custo_recebido
-        preco_venda = 0.0
-        valor_movimento = qtd_movimento * custo_unitario
+        preco_venda = preco_recebido
+        
+
+        if tipo_operacao == 'SAIDA':
+            nova_qtd = -qtd_movimento 
+            valor_movimento = qtd_movimento * preco_venda
+            aviso_venda = True 
+        else:
+            nova_qtd = qtd_movimento
+            valor_movimento = qtd_movimento * custo_unitario
 
         cursor.execute("""
             INSERT INTO estoque (client_id, product_id, nome, quantity, especificacao, ultima_atualizacao, custo_unitario, preco_venda) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (client_id, ref, nome_atual, nova_qtd, espec_atual, agora, custo_unitario, preco_venda))
 
-    # 2. Inserção no histórico com a conversão financeira
+
     cursor.execute("""
         INSERT INTO historico (client_id, product_id, quantidade, tipo, data, valor_total) 
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -85,7 +95,8 @@ def salvar_no_banco(dados, client_id, planilha_id, tipo_operacao='ENTRADA'):
     cursor.close()
     conn.close()
 
-    return {'status': 'sucesso', 'product_id': ref, 'total': nova_qtd}
+
+    return {'status': 'sucesso', 'product_id': ref, 'total': nova_qtd, 'aviso_venda': aviso_venda, 'nome': nome_atual}
 
 def executar_estorno_banco(client_id, planilha_id):
     conn = get_conexao()
@@ -171,7 +182,7 @@ def admin_cadastrar_cliente(nome, whatsapp, planilha_id, contexto_ia=""):
         """, (nome, planilha_id, contexto_ia))
         novo_id = cursor.fetchone()[0]
         
-        # 2. Associa o telefone principal a esta empresa
+
         cursor.execute("""
             INSERT INTO numeros_autorizados (telefone, client_id) 
             VALUES (%s, %s)
@@ -213,7 +224,7 @@ def atualizar_estoque_via_webhook(client_id, ref, nome, nova_qtd, novo_minimo=0,
     conn.close()
 
 
-# Adicione essa nova função no final do arquivo banco.py
+
 def sincronizacao_geral_banco(client_id, produtos):
     conn = get_conexao()
     cursor = conn.cursor()
@@ -221,7 +232,7 @@ def sincronizacao_geral_banco(client_id, produtos):
 
     refs_planilha = tuple([p['referencia'] for p in produtos])
 
-    # 1. Apaga tudo do banco que não está mais na planilha
+
     if refs_planilha:
         cursor.execute("DELETE FROM estoque WHERE client_id = %s AND product_id NOT IN %s", (client_id, refs_planilha))
     else:
@@ -298,12 +309,12 @@ def admin_adicionar_numero_por_id(novo_numero, client_id):
     conn = get_conexao()
     cursor = conn.cursor()
     try:
-        # Verifica se o ID da empresa realmente existe
+
         cursor.execute("SELECT id FROM clientes WHERE id = %s", (client_id,))
         if not cursor.fetchone():
             return False
 
-        # Adiciona o número
+
         cursor.execute("""
             INSERT INTO numeros_autorizados (telefone, client_id)
             VALUES (%s, %s)

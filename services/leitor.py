@@ -77,18 +77,16 @@ def analisar_pdf_nf(pdf_bytes, cnpj_cliente):
         1. NOME CURTO: Nome simples sem medidas.
         2. ESPECIFICACAO: Todas as medidas e detalhes técnicos.
         3. QUANTIDADE: Apenas número (use ponto para decimais).
-        4. VALOR FINANCEIRO:
-           - Se a operação for ENTRADA, extraia o valor unitário e chame de "custo_unitario".
-           - Se a operação for SAIDA, extraia o valor unitário e chame de "preco_venda".
-        # Adicionar esta regra no prompt do Gemini:
-        5. UNIDADES DE MEDIDA E MATEMÁTICA: Preste muita atenção na coluna UNID. Se o produto for vendido em "MI" (Milheiro), "CX" (Caixa) ou "FD" (Fardo), a sua missão é retornar a quantidade física total (Ex: 3 MI = 3000 unidades) E o custo estritamente unitário de CADA PEÇA (Valor Total da Linha dividido pela Quantidade Física Total). A matemática de 'quantidade * custo_unitario' DEVE bater com o valor total da nota.
-
+        4. VALOR FINANCEIRO E MATEMÁTICA (CRÍTICO):
+           - Observe a coluna UNID da nota. Se a unidade for "MIL", "MI", "CX" ou "FD", você DEVE calcular o custo físico de 1 unidade real (dividindo o Valor Total da linha pela quantidade física real de peças).
+           - Se a operação for ENTRADA, chame o campo de "custo_unitario". Se for SAIDA, chame de "preco_venda".
+           - REGRA ABSOLUTA DE FORMATAÇÃO: O valor financeiro DEVE ser um número puro com PONTO decimal (ex: 0.2098 ou 2.45). NUNCA use vírgula e NUNCA coloque o valor entre aspas.
            
         Retorne APENAS um JSON válido nesta exata estrutura:
         {{
             "tipo_operacao": "ENTRADA",
             "produtos": [
-                {{"referencia": "codigo", "nome": "SACO PP", "quantidade": 10.5, "especificacao": "30X42", "custo_unitario": 2.45}}
+                {{"referencia": "codigo", "nome": "SACO PP", "quantidade": 10.5, "especificacao": "30X42", "custo_unitario": 0.2098}}
             ]
         }}
         """
