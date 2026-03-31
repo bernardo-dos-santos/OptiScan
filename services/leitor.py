@@ -69,24 +69,26 @@ def analisar_pdf_nf(pdf_bytes, cnpj_cliente):
         Você é um sistema de ERP inteligente processando uma Nota Fiscal brasileira em PDF.
         A empresa dona deste sistema tem o CNPJ: {cnpj_cliente}
         
-        Sua primeira tarefa é descobrir a NATUREZA DA OPERAÇÃO usando APENAS esta regra lógica infalível:
+        Sua primeira tarefa é descobrir a NATUREZA DA OPERAÇÃO:
         - Se o CNPJ {cnpj_cliente} estiver no campo DESTINATÁRIO, a empresa está comprando. Defina "tipo_operacao": "ENTRADA".
         - Se o CNPJ {cnpj_cliente} estiver no campo EMITENTE, a empresa está vendendo. Defina "tipo_operacao": "SAIDA".
         
-        Sua segunda tarefa é extrair os produtos. Siga estas regras:
+        Sua segunda tarefa é extrair os produtos. Siga estas regras ESTRITAS:
         1. NOME CURTO: Nome simples sem medidas.
-        2. ESPECIFICACAO: Todas as medidas e detalhes técnicos.
-        3. QUANTIDADE: Apenas número (use ponto para decimais).
-        4. VALOR FINANCEIRO E MATEMÁTICA (CRÍTICO):
-           - Observe a coluna UNID da nota. Se a unidade for "MIL", "MI", "CX" ou "FD", você DEVE calcular o custo físico de 1 unidade real (dividindo o Valor Total da linha pela quantidade física real de peças).
-           - Se a operação for ENTRADA, chame o campo de "custo_unitario". Se for SAIDA, chame de "preco_venda".
-           - REGRA ABSOLUTA DE FORMATAÇÃO: O valor financeiro DEVE ser um número puro com PONTO decimal (ex: 0.2098 ou 2.45). NUNCA use vírgula e NUNCA coloque o valor entre aspas.
+        2. ESPECIFICACAO: Medidas e detalhes técnicos.
+        3. QUANTIDADE FÍSICA E MATEMÁTICA: 
+           - Observe a UNID. Se for "MIL" ou "MI" (Milheiro), multiplique a quantidade da nota por 1000. (Exemplo: se diz 3 MI, retorne 3000). A prioridade é a quantidade física de peças.
+        4. VALOR FINANCEIRO:
+           - Se for MIL/MI, o custo unitário é o Valor Total da Linha dividido pela Quantidade Física de peças (Ex: 465 / 3000 = 0.155).
+           - PROIBIDO ARREDONDAR: Se o cálculo der 0.155, retorne exatamente 0.155 (NÃO arredonde para 0.16).
+           - Se a operação for ENTRADA, chame de "custo_unitario". Se for SAIDA, chame de "preco_venda".
+           - Retorne com PONTO decimal. Sem aspas.
            
         Retorne APENAS um JSON válido nesta exata estrutura:
         {{
             "tipo_operacao": "ENTRADA",
             "produtos": [
-                {{"referencia": "codigo", "nome": "SACO PP", "quantidade": 10.5, "especificacao": "30X42", "custo_unitario": 0.2098}}
+                {{"referencia": "codigo", "nome": "SACO PP", "quantidade": 3000, "especificacao": "30X42", "custo_unitario": 0.155}}
             ]
         }}
         """

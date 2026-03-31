@@ -15,12 +15,15 @@ def atualizar_sheets(dados, total_banco, planilha_id):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1
     
-    # 1. DATA FORMATADA (Apenas dia/mês/ano)
     data_hora = (datetime.utcnow() - timedelta(hours=3)).strftime("%d/%m/%Y")
 
     ref_limpa = str(dados.get('referencia', 'N/A')).upper()
     nome_recebido = dados.get('nome')
     espec_recebida = dados.get('especificacao')
+    
+    # PEGANDO O DINHEIRO DO BANCO AQUI
+    custo_unitario = dados.get('custo_unitario', 0.0)
+    preco_venda = dados.get('preco_venda', 0.0)
 
     try:
         celula = aba.find(ref_limpa, in_column=3)
@@ -29,27 +32,27 @@ def atualizar_sheets(dados, total_banco, planilha_id):
 
     if celula:
         linha = celula.row
-        # Lê a linha atual para não apagar o Estoque Mínimo (Coluna E)
         valores_linha = aba.row_values(linha)
         
-        # Garante que a lista tenha 7 posições para evitar erros de índice
-        while len(valores_linha) < 7: 
+        # AGORA SÃO 9 COLUNAS (DE A ATÉ I)
+        while len(valores_linha) < 9: 
             valores_linha.append("")
             
-        # Atualiza apenas o que importa:
-        valores_linha[0] = data_hora # Coluna A (Data)
+        valores_linha[0] = data_hora 
         if nome_recebido and nome_recebido != "PRODUTO DESCONHECIDO": 
-            valores_linha[1] = nome_recebido # Coluna B (Nome)
-        valores_linha[3] = total_banco # Coluna D (Quantidade)
+            valores_linha[1] = nome_recebido 
+        valores_linha[3] = total_banco 
         if espec_recebida: 
-            valores_linha[5] = espec_recebida # Coluna F (Especificação)
-        valores_linha[6] = "✅ Atualizado  " # Coluna G (Status)
+            valores_linha[5] = espec_recebida 
+        valores_linha[6] = "✅ Atualizado  " 
+        valores_linha[7] = custo_unitario # Escreve o Custo na Coluna H
+        valores_linha[8] = preco_venda    # Escreve o Preço na Coluna I
         
-        # ...
-        aba.update(f"A{linha}:G{linha}", [valores_linha], value_input_option="USER_ENTERED")
+        # UPDATE EXPANDIDO ATÉ A COLUNA I
+        aba.update(f"A{linha}:I{linha}", [valores_linha], value_input_option="USER_ENTERED")
     else:
-        # Nova linha
-        aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo "], value_input_option="USER_ENTERED")
+        # NOVA LINHA AGORA RECEBE OS 9 VALORES
+        aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo ", custo_unitario, preco_venda], value_input_option="USER_ENTERED")
 def verificar_alerta_minimo(planilha_id, referencia):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1
