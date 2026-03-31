@@ -53,6 +53,7 @@ def atualizar_sheets(dados, total_banco, planilha_id):
     else:
         # NOVA LINHA AGORA RECEBE OS 9 VALORES
         aba.append_row([data_hora, nome_recebido or "N/A", ref_limpa, total_banco, "", espec_recebida or "", "✅ Novo ", custo_unitario, preco_venda], value_input_option="USER_ENTERED")
+        
 def verificar_alerta_minimo(planilha_id, referencia):
     client = _obter_cliente_gspread()
     aba = client.open_by_key(planilha_id).sheet1

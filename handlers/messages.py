@@ -83,31 +83,53 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
                 enviar_mensagem_meta(telefone_remetente, "❌ Erro: Empresa não encontrada no banco de dados.")
             return
         
-    # 2. COMANDOS DO CLIENTE (Dono ou Estoquista acessam)
-
+    # ==========================================
+    # 2. COMANDOS DO CLIENTE (Dono ou Estoquista)
+    # ==========================================
     if not cliente:
         enviar_mensagem_meta(telefone_remetente, "❌ Número não registrado no sistema OptiScan.")
         return
 
-    if corpo_mensagem == "#financeiro":
+    # Extrai os IDs do cliente logado uma única vez
+    client_id = cliente['id']
+    planilha_id = cliente['planilha_id']
+
+    # --- MENU DE AJUDA ---
+    if corpo_mensagem in ['ajuda', 'help', 'comandos', 'menu', 'oi', 'olá', 'ola', 'start']:
+        msg_ajuda = (
+            "🤖 *Guia Rápido do OptiScan* 📦\n\n"
+            "Aqui estão as formas de controlar o seu estoque:\n\n"
+            "📄 *Notas Fiscais (PDF):*\n"
+            "Basta enviar o PDF. Eu cruzo os CNPJs, descubro se é Entrada ou Saída e atualizo saldos e finanças.\n\n"
+            "📸 *Fotos & Etiquetas:*\n"
+            "Envie a foto do produto com a legenda. Ex: _'Entraram 10 caixas'_ ou _'Saída 5'_.\n\n"
+            "⌨️ *Comandos Manuais:*\n"
+            "🔹 *Entrada [nome/ID] [qtd]* (Ex: Entrada Saco PP 10)\n"
+            "🔹 *Saída [nome/ID] [qtd]* (Ex: Saida Saco PP 5)\n"
+            "🔹 *Estoque* (Mostra o saldo geral)\n"
+            "🔹 *Financeiro* (Mostra faturamento e custos do mês)\n"
+            "🔹 *Corrigir* (Desfaz a última operação)\n"
+            "🔹 *Dica* Você pode Adicionar, Excluir ou Editar produtos na sua planilha, por meio da aba ""📦 OptiScan""\n"
+        )
+        enviar_mensagem_meta(telefone_remetente, msg_ajuda)
+        return
+
+    # --- RELATÓRIO FINANCEIRO ---
+    if corpo_mensagem in ['financeiro', '!financeiro', '#financeiro']:
         faturamento, custos = gerar_relatorio_financeiro(client_id)
         lucro_bruto = faturamento - custos
         
         msg_fin = (
             "📊 *Resumo Financeiro (Mês Atual)* 📊\n\n"
-            f"📈 *Faturamento (Saídas):* R$ {faturamento:,.2f}\n"
-            f"📉 *Custos de Reposição (Entradas):* R$ {custos:,.2f}\n"
+            f"📈 *Faturamento (Saídas):* R$ {formatar_br(faturamento)}\n"
+            f"📉 *Custos de Reposição (Entradas):* R$ {formatar_br(custos)}\n"
             "------------------------\n"
-            f"💰 *Resultado Operacional:* R$ {lucro_bruto:,.2f}"
+            f"💰 *Resultado Operacional:* R$ {formatar_br(lucro_bruto)}"
         )
-        msg_fin = msg_fin.replace(',', 'X').replace('.', ',').replace('X', '.') 
         enviar_mensagem_meta(telefone_remetente, msg_fin)
         return
 
-    # 2. COMANDOS DE USUÁRIO
-    client_id = cliente['id']
-    planilha_id = cliente['planilha_id']
-
+    # --- ESTORNO ---
     if corpo_mensagem == "corrigir":
         resultado = executar_estorno_banco(client_id, planilha_id)
         if resultado:
@@ -116,27 +138,13 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
         else:
             enviar_mensagem_meta(telefone_remetente, "❌ Nenhum registro recente para desfazer.")
         return
-    
-    if corpo_mensagem == "!financeiro":
-        faturamento, custos = gerar_relatorio_financeiro(client_id)
-        lucro_bruto = faturamento - custos
-        
-        msg_fin = (
-            "📊 *Resumo Financeiro (Mês Atual)* 📊\n\n"
-            f"📈 *Faturamento (Saídas):* R$ {faturamento:,.2f}\n"
-            f"📉 *Custos de Reposição (Entradas):* R$ {custos:,.2f}\n"
-            "------------------------\n"
-            f"💰 *Resultado Operacional:* R$ {lucro_bruto:,.2f}"
-        )
-        msg_fin = msg_fin.replace(',', 'X').replace('.', ',').replace('X', '.') # Ajuste de pontuação BR
-        enviar_mensagem_meta(telefone_remetente, msg_fin)
-        return
 
+    # --- CONSULTA DE ESTOQUE ---
     if corpo_mensagem in ["estoque", "estóque"]:
         enviar_mensagem_meta(telefone_remetente, consultar_estoque_geral(planilha_id))
         return
 
-    # 3. ENTRADA / SAÍDA MANUAL (COM O TRATAMENTO BRASILEIRO)
+    # --- ENTRADA / SAÍDA MANUAL ---
     if corpo_mensagem.startswith(("entrada", "saida", "saída")):
         partes = corpo_mensagem_original.split()
         if len(partes) >= 3:
@@ -179,6 +187,6 @@ def tratar_comando_texto(telefone_remetente, corpo_mensagem_original, cliente):
             enviar_mensagem_meta(telefone_remetente, "❌ Use: `entrada/saida [NOME OU ID] [QTD]`")
             return
 
-    # Fallback
-    enviar_mensagem_meta(telefone_remetente, "👋 OptiScan Online. Envie uma foto da etiqueta, digite 'estoque' ou use comandos manuais.")
+    # --- FALLBACK ---
+    enviar_mensagem_meta(telefone_remetente, "👋 OptiScan Online. Envie uma foto da etiqueta, digite 'ajuda' ou use comandos manuais.")
     

@@ -23,11 +23,12 @@ def enviar_resumo_turno():
     conn = get_conexao()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT c.whatsapp, e.product_id, e.nome, e.quantity, e.estoque_minimo
+        SELECT n.telefone, e.product_id, e.nome, e.quantity, e.estoque_minimo
         FROM estoque e
         JOIN clientes c ON e.client_id = c.id
+        JOIN numeros_autorizados n ON c.id = n.client_id
         WHERE e.quantity <= e.estoque_minimo AND e.estoque_minimo > 0
-        ORDER BY c.whatsapp, e.nome;
+        ORDER BY n.telefone, e.nome;
     """)
     itens_criticos = cursor.fetchall()
     cursor.close()

@@ -43,7 +43,7 @@ def rodar_analise_preditiva():
         {historico_str}
         
         Calcule qual deve ser o estoque mínimo ideal para evitar rupturas, considerando
-        um tempo de reposição de 7 dias. Retorne APENAS O NÚMERO INTEIRO, sem texto.
+        um tempo de reposição de 7 dias. Retorne APENAS O NÚMERO, sem texto.
         """
         
         try:
@@ -56,10 +56,12 @@ def rodar_analise_preditiva():
             
             # Buscamos também o estoque_minimo atual no banco (e.estoque_minimo)
             cursor.execute("""
-                SELECT c.whatsapp, e.nome, e.estoque_minimo 
+                SELECT n.telefone, e.nome, e.estoque_minimo 
                 FROM clientes c 
                 JOIN estoque e ON c.id = e.client_id 
+                JOIN numeros_autorizados n ON c.id = n.client_id
                 WHERE c.id = %s AND e.product_id = %s
+                LIMIT 1
             """, (client_id, product_id))
             
             dados_cli = cursor.fetchone()
