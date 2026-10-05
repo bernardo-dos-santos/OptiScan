@@ -48,9 +48,18 @@ services/
 
 ```bash
 pip install -r requirements.txt
-python setup_nuvem.py   # cria as tabelas
+python setup_nuvem.py   # cria/atualiza as tabelas (idempotente)
 python app.py
 ```
+
+### Testes
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Cobrem a validação da assinatura da Meta (`services/meta.py`) e a formatação/conversão de números pt-BR (`services/uteis.py`).
 
 Variáveis de ambiente (`.env`):
 
@@ -66,13 +75,14 @@ DB_NAME=
 DB_USER=
 DB_PASS=
 DB_PORT=5432
+# Somente em desenvolvimento local, para aceitar webhooks sem assinatura:
+# ALLOW_UNSIGNED_WEBHOOKS=true
 ```
 
 Além disso, é preciso um `chave_nova.json` na raiz com as credenciais da service account do Google (Sheets + Drive), e a planilha compartilhada com o e-mail dessa conta.
 
 ## Limitações conhecidas
 
-- Sem testes automatizados.
-- `validar_assinatura_meta` retorna `True` quando `META_APP_SECRET` não está definido — conveniente em dev, ruim em produção.
-- As tabelas criadas por `setup_nuvem.py` estão defasadas em relação ao que o código usa (faltam `numeros_autorizados`, `cnpj`, `contexto_ia`, `estoque_minimo`, colunas de custo/preço).
+- Os testes cobrem só as funções puras (assinatura da Meta e formatação de números). Banco, Sheets e Gemini não têm testes (dependem de serviços externos).
 - O schema da planilha é posicional (colunas A–I fixas).
+- Sem migrações versionadas: `setup_nuvem.py` aplica `CREATE/ALTER ... IF NOT EXISTS`, o que serve para este tamanho de projeto, mas não substitui uma ferramenta de migração.

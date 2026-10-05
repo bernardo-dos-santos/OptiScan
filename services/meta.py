@@ -57,7 +57,19 @@ def baixar_imagem_meta(media_id):
         print(f"Erro Download Imagem: {e}")
         return None
 
+def _aceitar_sem_assinatura():
+    """Modo dev: só libera webhooks sem assinatura se ALLOW_UNSIGNED_WEBHOOKS=true."""
+    return os.getenv('ALLOW_UNSIGNED_WEBHOOKS', '').strip().lower() == 'true'
+
 def validar_assinatura_meta(payload, signature):
-    if not APP_SECRET or not signature: return True
+    """Valida o header X-Hub-Signature-256 da Meta (HMAC-SHA256 do corpo bruto).
+
+    Falha fechada: sem META_APP_SECRET ou sem assinatura, a requisição é recusada.
+    Para desenvolvimento local, defina ALLOW_UNSIGNED_WEBHOOKS=true no .env.
+    """
+    if _aceitar_sem_assinatura():
+        return True
+    if not APP_SECRET or not signature:
+        return False
     expected_sig = hmac.new(APP_SECRET.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"sha256={expected_sig}", signature)

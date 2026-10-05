@@ -21,7 +21,8 @@ def tratar_numero_brasileiro(texto):
     texto = str(texto).strip().replace(' ', '')
     
     if ',' in texto:
-        return float(texto.replace(',', '.'))
+        # "1.234,56": pontos são milhar, vírgula é decimal
+        return float(texto.replace('.', '').replace(',', '.'))
     
     if '.' in texto:
         partes = texto.split('.')
